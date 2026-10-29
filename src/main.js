@@ -23,7 +23,7 @@ const PARTS = [
   { id: 'nose', name: '코', kind: 'nose', ax: 0, ay: -.55, w: 1.2, h: 1.7, wind: .5, flutter: .3, steer: .75, r: .55 },
   { id: 'mouth', name: '입', kind: 'mouth', ax: 0, ay: -2.6, w: 2.5, h: 1.1, wind: 1.3, flutter: .7, steer: .9, r: .6 },
 ];
-const settings = { wind: true, follow: true, slow: true, obs: { hand: true, fly: true, ball: true, bubble: true, fan: true, shades: true, foam: true } };
+const settings = { wind: true, follow: true, slow: true };
 
 // ---------- 캔버스 그림 ----------
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
@@ -174,12 +174,12 @@ for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dus
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
 scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc9c2ff, size: .06, transparent: true, opacity: .5 })));
 
-// 장애물: 손바닥
-const hand = { mesh: flat(3.2, 4.0, tex(sticker(256, 320, PAINT.hand))), x: 0, y: 0, z: -17 };
-hand.mesh.position.z = hand.z; scene.add(hand.mesh);
+// 장애물: 손바닥 (막기). 던질 때마다 거리(z)·중심·오가는 방향(좌우/위아래)을 새로 뽑는다
+const hand = { mesh: flat(3.2, 4.0, tex(sticker(256, 320, PAINT.hand))), x: 0, y: 0, z: -17, cx: 0, cy: 0, axis: 'x' };
+scene.add(hand.mesh);
 
-// 장애물: 파리
-const flies = [-8, -12, -21, -26].map((z, i) => {
+// 장애물: 파리 (튕기기). 각자 중심을 두고 8자 경로를 돈다. 경로가 일정해서 보고 피할 수 있다
+const flies = [0, 1, 2].map(i => {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x0c0a12 })));
   const eyeM = new THREE.MeshBasicMaterial({ color: 0xc0303a });
@@ -187,59 +187,11 @@ const flies = [-8, -12, -21, -26].map((z, i) => {
   const wingM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .55, side: THREE.DoubleSide });
   const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(.38, .2), wingM); w.position.set(s * .22, .12, 0); g.add(w); return w; });
   scene.add(g);
-  return { g, wings, z, cx: (Math.random() - .5) * 5, cy: (Math.random() - .5) * 5, ph: Math.random() * 6, sp: .7 + i * .15, knock: 0, kv: new V3() };
+  return { g, wings, on: false, z: -15, cx: 0, cy: 0, ph: i * 2.1, sp: .8 + i * .15, knock: 0, kv: new V3() };
 });
-
-// 장애물: 거품 (얼굴 바로 앞에서 천천히 미끄러지며 얼굴 일부를 가린다. 다트는 통과)
-function foamTexture() {
-  const c = mk(256, 200), x = c.getContext('2d');
-  for (let i = 0; i < 70; i++) {
-    const r = 8 + Math.random() * 26, px = 30 + Math.random() * 196, py = 30 + Math.random() * 140;
-    x.fillStyle = '#f4fbff'; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
-    x.strokeStyle = 'rgba(150,190,220,.6)'; x.lineWidth = 2; x.stroke();
-    x.fillStyle = 'rgba(255,255,255,1)'; x.beginPath(); x.arc(px - r * .35, py - r * .35, r * .22, 0, 7); x.fill();
-  }
-  return tex(c);
-}
-const foam = Array.from({ length: 3 }, (_, i) => {
-  const m = flat(3.6, 2.8, foamTexture()); scene.add(m);
-  return { m, x: 0, y: 0, z: FACE_Z + 2.2 + i * .3, sp: .35 + i * .12, ph: i * 2.1 };
-});
-function resetFoam() { foam.forEach((f, i) => { f.y = [2, -.4, -2.8][i] + (Math.random() - .5) * .8; f.ph = Math.random() * 6; }); }
-
-// 장애물: 탱탱볼 (위아래로 통통 튀고, 맞으면 다트가 튕겨 나간다)
-const BALL_COLORS = [0xff7aa8, 0x5fc8ff, 0xffd23d];
-const balls = BALL_COLORS.map((col, i) => {
-  const m = new THREE.Mesh(new THREE.SphereGeometry(.55, 20, 14), new THREE.MeshBasicMaterial({ color: col }));
-  const band = new THREE.Mesh(new THREE.TorusGeometry(.55, .07, 8, 28), new THREE.MeshBasicMaterial({ color: 0xffffff }));
-  band.rotation.y = Math.PI / 2; m.add(band);
-  scene.add(m);
-  return { m, x: 0, z: [-9, -15, -23][i], ph: Math.random() * 6, sp: 2.2 + i * .4, floor: -4, h: 6, vx: 0 };
-});
-function resetBalls() { balls.forEach(b => { b.x = (Math.random() - .5) * 7; b.vx = (Math.random() - .5) * 1.5; b.floor = -4.5 + Math.random() * 2; }); }
-
-// 장애물: 큰 비눗방울 하나 (레인 가운데를 둥둥 떠다니고, 맞으면 터지면서 다트를 튕겨낸다)
-const BUBBLE_R = 1.9;
-const bubble = { g: new THREE.Group(), x: 0, y: 0, z: -14, ph: 0, pop: 0, popped: false };
-{
-  bubble.g.add(new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_R, 32, 20),
-    new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: .2, depthWrite: false })));
-  const rim = new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_R * 1.01, 32, 20),
-    new THREE.MeshBasicMaterial({ color: 0xff9ad8, transparent: true, opacity: .14, side: THREE.BackSide, depthWrite: false }));
-  bubble.g.add(rim);
-  const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .85 });
-  const s1 = new THREE.Mesh(new THREE.SphereGeometry(.26, 10, 8), shineMat); s1.position.set(-.7, .8, 1.55); s1.scale.set(1, .6, .3);
-  const s2 = new THREE.Mesh(new THREE.SphereGeometry(.12, 8, 6), shineMat); s2.position.set(-1.05, .45, 1.45);
-  bubble.g.add(s1, s2);
-  scene.add(bubble.g);
-}
-function resetBubble() {
-  bubble.x = (Math.random() - .5) * 4; bubble.y = (Math.random() - .5) * 3; bubble.ph = Math.random() * 6;
-  bubble.pop = 0; bubble.popped = false; bubble.g.scale.setScalar(1);
-}
 
 // 장애물: 선풍기 (바람은 좌우를 맡으니, 선풍기는 아래나 위에서 불어 다트를 위아래로 민다)
-const fan = { g: new THREE.Group(), blades: new THREE.Group(), dir: 1, z: -11, zone: 3 };
+const fan = { g: new THREE.Group(), blades: new THREE.Group(), dir: 1, z: -11, zone: 2.5 };
 {
   fan.g.add(new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x8fa6cf })));
   const bm = new THREE.MeshBasicMaterial({ color: 0xeef4ff, side: THREE.DoubleSide });
@@ -267,35 +219,35 @@ const flowTex = tex(flowCanvas); flowTex.wrapT = THREE.RepeatWrapping;
 const fanFlow = new THREE.Mesh(new THREE.PlaneGeometry(6, 12), new THREE.MeshBasicMaterial({ map: flowTex, transparent: true, opacity: .28, depthWrite: false }));
 scene.add(fanFlow);
 
-// 장애물: 선글라스 (눈 높이에서 얼굴 앞을 좌우로 오간다)
-const shades = {
-  mesh: flat(3.4, 1.15, tex(sticker(384, 140, (c, X, Y) => {
-    c.fillStyle = '#16131f'; c.strokeStyle = '#ffcc3d'; c.lineWidth = 6;
-    [[0, .44], [.56, 1]].forEach(([a, b]) => { c.beginPath(); c.roundRect(X(a), Y(.05), X(b) - X(a), Y(.95) - Y(.05), 26); c.fill(); c.stroke(); });
-    c.fillRect(X(.42), Y(.25), X(.58) - X(.42), 10);
-    c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(X(.06), Y(.2), 22, 8); c.fillRect(X(.62), Y(.2), 22, 8);
-  }))),
-  x: 0, y: 1.1, z: FACE_Z + 1.6,
-};
-scene.add(shades.mesh);
-
-// 이번 던지기의 장애물: 켜 둔 것 중 2~3개를 무작위로
-const OBS = { hand: '손바닥', fly: '파리', ball: '탱탱볼', bubble: '큰 비눗방울', fan: '선풍기', shades: '선글라스', foam: '거품' };
+// 이번 던지기의 장애물: 셋 중 1~2개. 거리(z)·좌우(x)·위아래(y)를 매번 새로 뽑는다
+const OBS = { hand: '손바닥', fly: '파리', fan: '선풍기' };
 let active = {};
+const rnd = (a, b) => a + Math.random() * (b - a);
 function pickObstacles() {
-  const on = Object.keys(OBS).filter(k => settings.obs[k]).sort(() => Math.random() - .5);
-  const chosen = on.slice(0, Math.min(on.length, 2 + (Math.random() < .5 ? 1 : 0)));
-  active = {}; chosen.forEach(k => { active[k] = true; });
-  resetFoam(); resetBalls(); resetBubble();
-  // dir 1 = 아래에서 위로, -1 = 위에서 아래로. 카메라 쪽으로 살짝 기울여 날개가 보이게
-  fan.dir = Math.random() < .5 ? -1 : 1;
-  fan.g.position.set((Math.random() - .5) * 3, -fan.dir * 6.6, fan.z); fan.g.rotation.set(-fan.dir * (Math.PI / 2 - .55), 0, 0);
-  fanFlow.position.set(fan.g.position.x, 0, fan.z);
-  hand.mesh.visible = !!active.hand; flies.forEach(f => { f.g.visible = !!active.fly; });
-  balls.forEach(b => { b.m.visible = !!active.ball; }); bubble.g.visible = !!active.bubble;
-  foam.forEach(f => { f.m.visible = !!active.foam; });
-  fan.g.visible = fanFlow.visible = !!active.fan; shades.mesh.visible = !!active.shades;
-  ui.obs.textContent = chosen.length ? '장애물: ' + chosen.map(k => OBS[k]).join(' · ') : '';
+  const keys = Object.keys(OBS).sort(() => Math.random() - .5).slice(0, Math.random() < .5 ? 1 : 2);
+  active = {}; keys.forEach(k => { active[k] = true; });
+  // z는 서로 4 이상 떨어지게 (한 지점에 몰리지 않게). 20번 안에 못 찾으면 마지막 값을 쓴다
+  const taken = [];
+  const placeZ = (lo, hi) => {
+    let z = rnd(lo, hi);
+    for (let i = 0; i < 20 && taken.some(t => Math.abs(t - z) < 4); i++) z = rnd(lo, hi);
+    taken.push(z); return z;
+  };
+  if (active.hand) { hand.z = placeZ(-22, -12); hand.cx = rnd(-2.5, 2.5); hand.cy = rnd(-2, 2); hand.axis = Math.random() < .5 ? 'x' : 'y'; }
+  if (active.fan) {
+    // dir 1 = 아래에서 위로, -1 = 위에서 아래로. 카메라 쪽으로 살짝 기울여 날개가 보이게
+    fan.z = placeZ(-22, -9); fan.dir = Math.random() < .5 ? -1 : 1;
+    fan.g.position.set(rnd(-1.5, 1.5), -fan.dir * 6.6, fan.z); fan.g.rotation.set(-fan.dir * (Math.PI / 2 - .55), 0, 0);
+    fanFlow.position.set(fan.g.position.x, 0, fan.z);
+  }
+  const nFly = Math.random() < .5 ? 2 : 3;
+  flies.forEach((f, i) => {
+    f.on = !!active.fly && i < nFly;
+    if (f.on) { f.z = placeZ(-26, -8); f.cx = rnd(-3, 3); f.cy = rnd(-2.5, 2.5); f.knock = 0; f.g.rotation.z = 0; }
+  });
+  hand.mesh.visible = !!active.hand; flies.forEach(f => { f.g.visible = f.on; });
+  fan.g.visible = fanFlow.visible = !!active.fan;
+  ui.obs.textContent = '장애물: ' + keys.map(k => OBS[k]).join(' · ');
 }
 
 // 세기 화살표: 화면 위 다트 촉에서 위로 뻗는다. 길이·색 = 세기, 기울기 = 좌우 각도 (과녁까지 닿지 않음)
@@ -379,12 +331,9 @@ function noise(dur, vol, freq, type) {
 const sfx = {
   throw() { noise(.3, .45, 1600); },
   stick() { noise(.05, .9, 3500, 'highpass'); tone(140, 55, .16, 'sine', .5); setTimeout(() => tone(900, 700, .25, 'triangle', .05), 30); },
-  knock() { tone(1200, 800, .08, 'square', .08); },
   block() { tone(320, 120, .25, 'square', .12); noise(.12, .4, 600); },
   fly() { tone(220, 140, .18, 'sawtooth', .08); },
   miss() { tone(300, 90, .4, 'sine', .15); },
-  pop() { tone(900, 1900, .08, 'sine', .18); noise(.04, .3, 4000, 'highpass'); },
-  boing() { tone(180, 520, .18, 'sine', .25); setTimeout(() => tone(520, 260, .15, 'sine', .12), 120); },
   done() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f, .25, 'triangle', .12), i * 110)); },
 };
 const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
@@ -392,7 +341,7 @@ const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
 const ui = { round: $('round'), wind: $('wind'), hint: $('hint'), obs: $('obs'), parts: $('parts'), stick: $('stick'), knob: $('knob'), toast: $('toast'),
-  repos: $('reposBtn'), parrow: $('parrow') };
+  repos: $('reposBtn'), parrow: $('parrow'), tilt: $('tilt') };
 PARTS.forEach(p => {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'part'; b.id = 'part-' + p.id;
@@ -474,11 +423,19 @@ let ghosts = [];
 const REST_Y = -.9, LINE_Y_MIN = -4, LINE_Y_MAX = 3.6;
 let aimPhase = 'place', throwX = 0, throwY = REST_Y;
 const MAX_PULL = () => Math.min(app.clientHeight * .3, 230);
-function restPose() { held.position.set(throwX, throwY, 0); pointDart(held, new V3(0, .1, -1)); }
+// tilt = 위아래 기울기(도, 위가 +). 오른쪽 슬라이더로 정한다
+let tilt = 0;
+const tiltTan = () => Math.tan(tilt * Math.PI / 180);
+function restPose() { held.position.set(throwX, throwY, 0); pointDart(held, new V3(0, .1 + tiltTan(), -1)); }
+const tiltText = () => (tilt === 0 ? '수평' : `${tilt > 0 ? '위' : '아래'} ${Math.abs(tilt)}°`);
+$('tiltIn').addEventListener('input', e => {
+  tilt = +e.target.value; $('tiltOut').textContent = `${tilt}°`;
+  if (state === 'aim' && held && !ptr) restPose();
+});
 
 function newWind() {
   wind.x = settings.wind ? (Math.random() * 2 - 1) * 1.8 : 0;
-  wind.y = settings.wind ? (Math.random() * 2 - 1) * .6 : 0;
+  wind.y = 0; // 위아래는 선풍기 담당
   const a = Math.abs(wind.x);
   ui.wind.innerHTML = a < .4 ? '바람 없음' :
     `바람 <b>${(wind.x < 0 ? '◀' : '▶').repeat(a < 1.2 ? 1 : a < 2 ? 2 : 3)}</b> ${a.toFixed(1)}`;
@@ -499,13 +456,17 @@ function select(p) {
   held = makeDart(p); restPose(); scene.add(held);
   refreshButtons();
 }
+// 손바닥에 처음 막힌 부위는 0점 대신 한 번 더 던진다 (부위마다 1회). 장애물·바람은 그대로 둔다
+const retried = new Set();
+let retrying = false;
 function toAim() {
   state = 'aim';
+  if (retrying) { retrying = false; select(current); toPlace(); return; }
   const next = used.has(current.id) ? PARTS.find(p => !used.has(p.id)) : current;
   newWind(); pickObstacles(); select(next); toPlace();
 }
 function toPlace() {
-  aimPhase = 'place'; ui.repos.hidden = true;
+  aimPhase = 'place'; ui.repos.hidden = true; ui.tilt.hidden = false;
   setHint('① 누른 채 끌어서 노릴 곳 앞에 다트를 두고 손을 떼세요');
 }
 function toPull() {
@@ -518,6 +479,7 @@ function newRound() {
   stuck.forEach(s => { scene.remove(s.card); scene.remove(s.dart); }); stuck.length = 0;
   ghosts.forEach(g => scene.remove(g)); ghosts = [];
   used.clear(); Object.keys(results).forEach(k => delete results[k]);
+  retried.clear(); retrying = false;
   $('result').hidden = true; ui.parts.hidden = false;
   current = PARTS[0]; toAim();
 }
@@ -545,7 +507,7 @@ const degText = yaw => { const d = Math.round(Math.abs(yaw) * 180 / Math.PI); re
 function shotOf(power, yaw, P) {
   const D = P.z - FACE_Z, vz = 22 + power * 20, t = D / vz;
   const h = P.y - (1 - power) * 1.8;
-  return new V3(Math.sin(yaw) * vz, (h - P.y + G * t * t / 2) / t, -Math.cos(yaw) * vz);
+  return new V3(Math.sin(yaw) * vz, (h - P.y + G * t * t / 2) / t + tiltTan() * vz, -Math.cos(yaw) * vz);
 }
 function launch(power, yaw) {
   const P = held.position.clone(), vel = shotOf(power, yaw, P);
@@ -553,7 +515,7 @@ function launch(power, yaw) {
     p: current, mesh: held, pos: P, vel,
     rot: 0, spin: (Math.random() - .5) * .5 * current.flutter, wobble: 0, t: 0, jx: 0, jy: 0, roll: 0,
   };
-  held = null; state = 'fly'; ui.repos.hidden = true; aimArrow.visible = false;
+  held = null; state = 'fly'; ui.repos.hidden = true; ui.tilt.hidden = true; aimArrow.visible = false;
   refreshButtons(); sfx.throw(); buzz(15);
   setHint('누른 채 끌면 그쪽으로 틀어요. 많이 틀수록 느려지고 흔들려요');
 }
@@ -570,6 +532,11 @@ const NOTE = { face: '', board: '얼굴 밖', blocked: '막힘', miss: '빗나�
 
 function finish(where) {
   const d = dart, p = d.p;
+  if (where === 'blocked' && !retried.has(p.id)) {
+    retried.add(p.id); retrying = true; scene.remove(d.mesh);
+    toast('막혔다!', `${p.name} 한 번 더`);
+    dart = null; state = 'impact'; timer = 1.2; return;
+  }
   used.add(p.id);
   if (where === 'face' || where === 'board') {
     // 카드는 얼굴에 납작하게 꽂고, 다트는 들어온 각도 그대로 박혀서 떨린다
@@ -582,8 +549,8 @@ function finish(where) {
   const sc = scoreOf(p, d.pos.x, d.pos.y, d.roll, where);
   const note = (where === 'blocked' && d.blockNote) || NOTE[where];
   results[p.id] = { score: sc, where, note };
-  const tilt = Math.round(Math.abs(wrapAngle(d.roll)) * 180 / Math.PI);
-  toast(where === 'face' ? `+${sc}` : '0', where === 'face' ? `${p.name} · 기울기 ${tilt}°` : note);
+  const turn = Math.round(Math.abs(wrapAngle(d.roll)) * 180 / Math.PI);
+  toast(where === 'face' ? `+${sc}` : '0', where === 'face' ? `${p.name} · 회전 ${turn}°` : note);
   dart = null; state = 'impact'; timer = 1.6; refreshButtons();
 }
 
@@ -592,19 +559,7 @@ function stickHit() {
   const onFace = inFace(x, y);
   const onBoard = Math.hypot(x, y) <= BOARD_R - .2;
   if (!onFace && !onBoard) { d.falling = true; d.fallEnd = d.t + 1; d.vel.set(d.vel.x * .2, -2, 3); sfx.miss(); return; }
-  // 먼저 꽂힌 부위를 맞히면 그 부위가 밀리고 돌아간다
-  stuck.forEach(s => {
-    const dx = s.x - x, dy = s.y - y, dist = Math.hypot(dx, dy);
-    if (dist < (p.r + s.p.r) * .85) {
-      const k = .6 / Math.max(dist, .05);
-      s.x += dx * k; s.y += dy * k; s.rot += (Math.random() < .5 ? -1 : 1) * (.35 + Math.random() * .3);
-      s.card.position.x = s.x; s.card.position.y = s.y; s.card.rotation.z = s.rot;
-      s.dart.position.x = s.x; s.dart.position.y = s.y; s.hitT = T;
-      if (s.where === 'face' && !inFace(s.x, s.y)) s.where = 'board';
-      results[s.p.id] = { score: scoreOf(s.p, s.x, s.y, s.rot, s.where), where: s.where };
-      sfx.knock();
-    }
-  });
+  // 먼저 꽂힌 부위와 겹쳐도 밀지 않는다. 나중 카드가 위에 겹쳐 꽂힌다
   sfx.stick(); buzz(onFace ? 30 : 15); if (!reduceMotion) shake = .18;
   finish(onFace ? 'face' : 'board');
 }
@@ -647,29 +602,11 @@ function stepDart(dt) {
   const crossed = z => prevZ > z && d.pos.z <= z;
   if (active.hand && crossed(hand.z) &&
       Math.abs(d.pos.x - hand.x) < 1.5 + p.r * .4 && Math.abs(d.pos.y - hand.y) < 1.9 + p.r * .4) { blockDart(d, '손바닥에 막힘'); return; }
-  if (active.ball) balls.forEach(b => {
-    const dist = b.m.position.distanceTo(d.pos);
-    if (b.cool > 0 || dist > .55 + p.r * .6) return;
-    const dx = (d.pos.x - b.m.position.x) / Math.max(dist, .05), dy = (d.pos.y - b.m.position.y) / Math.max(dist, .05);
-    d.vel.x += dx * 6; d.vel.y += dy * 5; d.vel.z *= .85; d.spin += (Math.random() - .5) * 5;
-    b.cool = .5; b.squash = .3; sfx.boing(); buzz(25);
-  });
-  if (active.shades && crossed(shades.z) &&
-      Math.abs(d.pos.x - shades.x) < 1.7 + p.r * .3 && Math.abs(d.pos.y - shades.y) < .58 + p.r * .3) { blockDart(d, '선글라스에 막힘'); return; }
   if (active.fan && Math.abs(d.pos.z - fan.z) < fan.zone && Math.abs(d.pos.x - fan.g.position.x) < 3) {
     d.vel.y += fan.dir * 13 * dt; d.wobble = Math.min(2, d.wobble + dt * .8);
   }
-  if (active.bubble && !bubble.popped) {
-    const bp = bubble.g.position, dist = bp.distanceTo(d.pos);
-    if (dist < BUBBLE_R + p.r * .4) {
-      // 터지면서 다트를 방울 중심 반대쪽으로 튕긴다
-      const nx = (d.pos.x - bp.x) / Math.max(dist, .1), ny = (d.pos.y - bp.y) / Math.max(dist, .1);
-      d.vel.x += nx * 5; d.vel.y += ny * 5 + 1; d.vel.z *= .9; d.spin += (Math.random() - .5) * 4;
-      bubble.popped = true; bubble.pop = .3; sfx.pop(); buzz(20);
-    }
-  }
   if (active.fly) flies.forEach(f => {
-    if (f.knock > 0) return;
+    if (!f.on || f.knock > 0) return;
     if (f.g.position.distanceTo(d.pos) < p.r * .8 + .3) {
       const side = d.pos.x >= f.g.position.x ? 1 : -1;
       d.vel.x += side * (2.5 + Math.random() * 2.5); d.vel.y += (Math.random() - .5) * 3; d.vel.z *= .85; d.spin += (Math.random() - .5) * 6;
@@ -689,8 +626,6 @@ function showResult() {
     const r = results[p.id];
     return `<div><span>${p.name}</span><b>${r.where === 'face' ? r.score + '점' : '0점 · ' + (r.note || NOTE[r.where])}</b></div>`;
   }).join('');
-  // 결과 화면에선 시야 가리는 것들을 걷어낸다
-  foam.forEach(f => { f.m.visible = false; });
   ui.parts.hidden = true; $('result').hidden = false; $('ghostBtn').textContent = '정답 자리 보기';
   setHint(''); sfx.done();
 }
@@ -707,7 +642,6 @@ $('ghostBtn').addEventListener('click', () => {
 // 설정·소리
 const optMap = { optWind: 'wind', optFollow: 'follow', optSlow: 'slow' };
 Object.keys(optMap).forEach(id => $(id).addEventListener('change', e => { settings[optMap[id]] = e.target.checked; }));
-document.querySelectorAll('[data-obs]').forEach(el => el.addEventListener('change', () => { settings.obs[el.dataset.obs] = el.checked; }));
 $('optBtn').addEventListener('click', () => { $('opts').hidden = !$('opts').hidden; });
 $('optClose').addEventListener('click', () => { $('opts').hidden = true; });
 $('soundBtn').addEventListener('click', () => {
@@ -784,33 +718,19 @@ function frame(now) {
   const dt = rdt * slow;
   T += dt;
 
-  hand.x = Math.sin(T * .9) * 4; hand.y = .3 + Math.sin(T * .55) * 1.4;
+  // 손바닥: 뽑힌 방향(좌우 또는 위아래)으로만 오간다
+  const sw = Math.sin(T * .9);
+  hand.x = hand.axis === 'x' ? hand.cx + sw * 3.5 : hand.cx; hand.y = hand.axis === 'y' ? hand.cy + sw * 2.5 : hand.cy;
   hand.mesh.position.set(hand.x, hand.y, hand.z); hand.mesh.rotation.z = Math.sin(T * 1.8) * .12;
-  foam.forEach(f => f.m.position.set(Math.sin(T * f.sp + f.ph) * 3, f.y + Math.sin(T * 1.1 + f.ph) * .15, f.z));
-  balls.forEach(b => {
-    b.x += b.vx * dt; if (Math.abs(b.x) > 4) { b.vx = -b.vx; b.x = Math.sign(b.x) * 4; }
-    const ph = (T * b.sp + b.ph) % Math.PI, y = b.floor + Math.sin(ph) * b.h;
-    b.cool = Math.max(0, (b.cool || 0) - dt); b.squash = Math.max(0, (b.squash || 0) - dt);
-    const sq = ph < .25 || ph > Math.PI - .25 ? .25 : b.squash;
-    b.m.position.set(b.x, y, b.z); b.m.scale.set(1 + sq, 1 - sq, 1 + sq);
-  });
-  shades.x = Math.sin(T * .8) * 2.8; shades.mesh.position.set(shades.x, shades.y + Math.sin(T * 2.2) * .08, shades.z);
   fan.blades.rotation.z += dt * 24; flowTex.offset.y -= fan.dir * dt * 1.4;
-  // 큰 비눗방울: 천천히 떠다니며 출렁. 터지면 잠깐 부풀었다 사라진다
-  if (bubble.popped) {
-    bubble.pop = Math.max(0, bubble.pop - dt);
-    bubble.g.scale.setScalar(1 + (.3 - bubble.pop) * 1.5); bubble.g.visible = bubble.pop > 0 && !!active.bubble;
-  } else {
-    const wob = Math.sin(T * 3 + bubble.ph) * .04;
-    bubble.g.position.set(bubble.x + Math.sin(T * .45 + bubble.ph) * 2.5, bubble.y + Math.sin(T * .8 + bubble.ph) * .8, bubble.z);
-    bubble.g.scale.set(1 + wob, 1 - wob, 1);
-  }
   flies.forEach(f => {
     if (f.knock > 0) {
+      // 맞은 파리는 잠깐 튕겨 나갔다가 제 경로로 돌아온다
       f.knock -= dt; f.g.position.addScaledVector(f.kv, dt); f.g.rotation.z += dt * 10;
-      if (f.knock <= 0) { f.cx = (Math.random() - .5) * 5; f.cy = (Math.random() - .5) * 5; f.g.rotation.z = 0; }
+      if (f.knock <= 0) f.g.rotation.z = 0;
     } else {
-      f.g.position.set(f.cx + Math.sin(T * f.sp * 1.3 + f.ph) * 2.2, f.cy + Math.cos(T * f.sp * 1.9 + f.ph) * 1.3, f.z + Math.sin(T * f.sp + f.ph) * .8);
+      const t = T * f.sp + f.ph;
+      f.g.position.set(f.cx + Math.sin(t) * 2, f.cy + Math.sin(2 * t) * 1, f.z);
     }
     const flap = Math.sin(T * 60) * .8;
     f.wings[0].rotation.y = flap; f.wings[1].rotation.y = -flap;
@@ -831,7 +751,7 @@ function frame(now) {
       pointDart(held, dir);
       // 세기 = 다트 앞 화살표의 길이와 색 (초록 → 노랑 → 빨강)
       drawPowerArrow(a); aimArrow.visible = a.dy > 0;
-      setHint(a.dy > 0 ? `세기 ${Math.round(a.power * 100)}% · ${degText(a.yaw)}` : '아래로 당기세요');
+      setHint(a.dy > 0 ? `세기 ${Math.round(a.power * 100)}% · ${degText(a.yaw)} · ${tiltText()}` : '아래로 당기세요');
     } else {
       held.position.x += (throwX - held.position.x) * Math.min(1, rdt * 18);
       held.position.y += (throwY + Math.sin(T * 2) * .03 - held.position.y) * Math.min(1, rdt * 18);

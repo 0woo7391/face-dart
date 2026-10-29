@@ -23,19 +23,12 @@
       <div class="stick" id="stick" hidden><div class="base"></div><div class="knob" id="knob"></div></div>
       <div class="toast out" id="toast"></div>
       <div class="parts" id="parts"></div>
+      <label class="tilt" id="tilt" hidden><span>기울기</span><input type="range" id="tiltIn" min="-8" max="8" step="1" value="0" aria-label="위아래 기울기" /><output id="tiltOut">0°</output></label>
     
       <div class="sheet" id="opts" hidden>
         <h2>설정</h2>
         <div class="opts">
           <label><input type="checkbox" id="optWind" checked> 바람</label>
-          <p>장애물 (던질 때마다 켜 둔 것 중 2~3개가 나와요)</p>
-          <label><input type="checkbox" id="obs-hand" data-obs="hand" checked> 손바닥</label>
-          <label><input type="checkbox" id="obs-fly" data-obs="fly" checked> 파리</label>
-          <label><input type="checkbox" id="obs-ball" data-obs="ball" checked> 탱탱볼</label>
-          <label><input type="checkbox" id="obs-foam" data-obs="foam" checked> 거품</label>
-          <label><input type="checkbox" id="obs-bubble" data-obs="bubble" checked> 큰 비눗방울</label>
-          <label><input type="checkbox" id="obs-fan" data-obs="fan" checked> 선풍기</label>
-          <label><input type="checkbox" id="obs-shades" data-obs="shades" checked> 선글라스</label>
           <label><input type="checkbox" id="optFollow" checked> 다트 따라가는 카메라</label>
           <label><input type="checkbox" id="optSlow" checked> 얼굴 앞 슬로모션</label>
           <p>바꾼 설정은 다음 던지기부터 적용돼요. 키보드 방향키로도 비행 중에 틀 수 있어요.</p>
