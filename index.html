@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>얼굴 다트</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700&display=swap" />
+  </head>
+  <body>
+    <div id="app">
+      <canvas id="c"></canvas>
+      <div class="top">
+        <div class="round" id="round">1/6</div>
+        <div class="wind" id="wind">바람</div>
+        <button class="chip" id="faceBtn" type="button">얼굴</button>
+        <button class="chip" id="soundBtn" type="button">소리 켬</button>
+        <button class="chip" id="optBtn" type="button">설정</button>
+      </div>
+      <div class="hint" id="hint"></div>
+      <div class="obsline" id="obs"></div>
+      <div class="parrow" id="parrow" hidden><i></i></div>
+      <button class="chip repos" id="reposBtn" type="button" hidden>자리 다시 정하기</button>
+      <div class="stick" id="stick" hidden><div class="base"></div><div class="knob" id="knob"></div></div>
+      <div class="toast out" id="toast"></div>
+      <div class="parts" id="parts"></div>
+    
+      <div class="sheet" id="opts" hidden>
+        <h2>설정</h2>
+        <div class="opts">
+          <label><input type="checkbox" id="optWind" checked> 바람</label>
+          <p>장애물 (던질 때마다 켜 둔 것 중 2~3개가 나와요)</p>
+          <label><input type="checkbox" id="obs-hand" data-obs="hand" checked> 손바닥</label>
+          <label><input type="checkbox" id="obs-fly" data-obs="fly" checked> 파리</label>
+          <label><input type="checkbox" id="obs-ball" data-obs="ball" checked> 탱탱볼</label>
+          <label><input type="checkbox" id="obs-foam" data-obs="foam" checked> 거품</label>
+          <label><input type="checkbox" id="obs-bubble" data-obs="bubble" checked> 큰 비눗방울</label>
+          <label><input type="checkbox" id="obs-fan" data-obs="fan" checked> 선풍기</label>
+          <label><input type="checkbox" id="obs-shades" data-obs="shades" checked> 선글라스</label>
+          <label><input type="checkbox" id="optFollow" checked> 다트 따라가는 카메라</label>
+          <label><input type="checkbox" id="optSlow" checked> 얼굴 앞 슬로모션</label>
+          <p>바꾼 설정은 다음 던지기부터 적용돼요. 키보드 방향키로도 비행 중에 틀 수 있어요.</p>
+        </div>
+        <div class="btns"><button class="btn main" id="optClose" type="button">닫기</button></div>
+      </div>
+    
+      <div class="sheet" id="result" hidden>
+        <h2 id="resTitle">결과</h2>
+        <div class="rows" id="resRows"></div>
+        <div class="btns">
+          <button class="btn" id="ghostBtn" type="button">정답 자리 보기</button>
+          <button class="btn main" id="againBtn" type="button">한 판 더</button>
+        </div>
+      </div>
+      <section id="maker" hidden></section>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

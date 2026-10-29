@@ -1,0 +1,982 @@
+<meta charset="utf-8">
+<title>얼굴 다트</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Jua&family=Noto+Sans+KR:wght@400;700&display=swap">
+<style>
+/* 세로 한 화면: 3D 무대 위에 위(상태)·아래(부위 선택) HUD만 얹는다. 밤 놀이공원 다트 부스 느낌, 단일 다크 테마 */
+:root {
+  --night: #1b1530;
+  --dusk: #2a2147;
+  --panel: rgba(27, 21, 48, .86);
+  --ink: #f6efe4;
+  --muted: #a79fc4;
+  --pop: #ffcc3d;
+  --hit: #ff5d73;
+  --ok: #5fe0a8;
+  --display: 'Jua', 'Noto Sans KR', system-ui, sans-serif;
+  --body: 'Noto Sans KR', system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--night); color: var(--ink); font-family: var(--body);
+  overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#app {
+  position: relative; height: 100%; max-width: 520px; margin: 0 auto; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--pop); outline-offset: 2px; }
+
+.top {
+  position: relative; z-index: 2; display: flex; align-items: center; gap: 8px;
+  padding-top: 12px; pointer-events: none;
+}
+.top > * { pointer-events: auto; }
+.round { font-family: var(--display); font-size: 20px; letter-spacing: .02em; }
+.round small { font-family: var(--body); font-size: 12px; color: var(--muted); margin-left: 6px; }
+.wind {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  background: var(--panel); border-radius: 999px; padding: 5px 12px; font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wind b { color: var(--pop); font-weight: 700; letter-spacing: -.1em; }
+.chip {
+  background: var(--panel); border: 1px solid rgba(167, 159, 196, .3); border-radius: 999px;
+  padding: 5px 11px; font-size: 13px;
+}
+.hint {
+  position: relative; z-index: 2; margin-top: 8px; text-align: center; font-size: 13px;
+  color: var(--muted); pointer-events: none; text-shadow: 0 1px 3px #000;
+}
+
+.parts {
+  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.part {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--panel); border: 2px solid transparent; border-radius: 12px; padding: 6px 8px;
+  font-size: 13px; text-align: left;
+}
+.part img { width: 34px; height: 26px; object-fit: contain; flex: none; }
+.part span { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.part em { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.part.sel { border-color: var(--pop); }
+.part.used { opacity: .45; }
+.part:disabled { cursor: default; }
+
+.obsline {
+  position: relative; z-index: 2; margin-top: 4px; text-align: center; font-size: 12px;
+  color: var(--pop); pointer-events: none; text-shadow: 0 1px 3px #000;
+}
+.parrow {
+  position: absolute; z-index: 2; width: 22px; margin-left: -11px; transform-origin: 50% 100%;
+  pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+.parrow::before {
+  content: ""; position: absolute; top: -14px; left: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 16px solid currentColor;
+}
+.parrow i { display: block; width: 6px; height: 100%; margin: 0 auto; background: currentColor; border-radius: 3px; }
+.repos {
+  position: absolute; z-index: 2; left: 50%; transform: translateX(-50%);
+  top: 104px;
+}
+.stick { position: absolute; z-index: 3; pointer-events: none; }
+.stick .base { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); }
+.stick .knob { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255, 204, 61, .8); }
+
+.toast {
+  position: absolute; z-index: 3; left: 0; right: 0; top: 26%; text-align: center; pointer-events: none;
+  font-family: var(--display); font-size: 44px; text-shadow: 0 3px 0 rgba(0, 0, 0, .5);
+  transition: opacity .3s, transform .3s;
+}
+.toast small { display: block; font-family: var(--body); font-size: 14px; color: var(--ink); margin-top: 2px; text-shadow: 0 1px 3px #000; }
+.toast.out { opacity: 0; transform: translateY(-14px); }
+
+.sheet {
+  position: absolute; z-index: 4; left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel); border: 1px solid rgba(167, 159, 196, .3); border-radius: 16px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px; backdrop-filter: blur(6px);
+}
+.sheet h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; text-wrap: balance; }
+.sheet h2 small { font-family: var(--body); font-size: 14px; color: var(--pop); margin-left: 8px; }
+.rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; font-size: 13px; }
+.rows div { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.rows span { color: var(--muted); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { flex: 1; border: 0; border-radius: 10px; padding: 10px 14px; background: var(--dusk); }
+.btn.main { background: var(--pop); color: var(--night); font-weight: 700; }
+.opts { display: grid; gap: 10px; font-size: 14px; }
+.opts label { display: flex; align-items: center; gap: 10px; }
+.opts input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--pop); }
+.opts input[type=range] { flex: 1; min-width: 0; accent-color: var(--pop); }
+.opts output { font-variant-numeric: tabular-nums; color: var(--pop); min-width: 2.5em; text-align: right; }
+.opts p { margin: 0; font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+
+<div id="app">
+  <canvas id="c"></canvas>
+  <div class="top">
+    <div class="round" id="round">1/6</div>
+    <div class="wind" id="wind">바람</div>
+    <button class="chip" id="soundBtn" type="button">소리 켬</button>
+    <button class="chip" id="optBtn" type="button">설정</button>
+  </div>
+  <div class="hint" id="hint"></div>
+  <div class="obsline" id="obs"></div>
+  <div class="parrow" id="parrow" hidden><i></i></div>
+  <button class="chip repos" id="reposBtn" type="button" hidden>자리 다시 정하기</button>
+  <div class="stick" id="stick" hidden><div class="base"></div><div class="knob" id="knob"></div></div>
+  <div class="toast out" id="toast"></div>
+  <div class="parts" id="parts"></div>
+
+  <div class="sheet" id="opts" hidden>
+    <h2>설정</h2>
+    <div class="opts">
+      <label><input type="checkbox" id="optWind" checked> 바람</label>
+      <p>장애물 (던질 때마다 켜 둔 것 중 2~3개가 나와요)</p>
+      <label><input type="checkbox" id="obs-hand" data-obs="hand" checked> 손바닥</label>
+      <label><input type="checkbox" id="obs-fly" data-obs="fly" checked> 파리</label>
+      <label><input type="checkbox" id="obs-ball" data-obs="ball" checked> 탱탱볼</label>
+      <label><input type="checkbox" id="obs-foam" data-obs="foam" checked> 거품</label>
+      <label><input type="checkbox" id="obs-bubble" data-obs="bubble" checked> 큰 비눗방울</label>
+      <label><input type="checkbox" id="obs-fan" data-obs="fan" checked> 선풍기</label>
+      <label><input type="checkbox" id="obs-shades" data-obs="shades" checked> 선글라스</label>
+      <label><input type="checkbox" id="optFollow" checked> 다트 따라가는 카메라</label>
+      <label><input type="checkbox" id="optSlow" checked> 얼굴 앞 슬로모션</label>
+      <p>바꾼 설정은 다음 던지기부터 적용돼요. 키보드 방향키로도 비행 중에 틀 수 있어요.</p>
+    </div>
+    <div class="btns"><button class="btn main" id="optClose" type="button">닫기</button></div>
+  </div>
+
+  <div class="sheet" id="result" hidden>
+    <h2 id="resTitle">결과</h2>
+    <div class="rows" id="resRows"></div>
+    <div class="btns">
+      <button class="btn" id="ghostBtn" type="button">정답 자리 보기</button>
+      <button class="btn main" id="againBtn" type="button">한 판 더</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script>
+(() => {
+const V3 = THREE.Vector3;
+const FACE_Z = -30, G = 7, LINE_X = 4.2;
+const FACE_RX = 4.4, FACE_RY = 5.6, BOARD_R = 7.6;
+const DIAG = 2 * Math.hypot(FACE_RX, FACE_RY);
+const AIM_CAM = new V3(0, .6, 7);
+const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// 부위별 성격: wind = 바람 타는 정도(카드가 넓을수록), flutter = 팔랑거림, steer = 틀기 반응
+const PARTS = [
+  { id: 'browL', name: '왼 눈썹', kind: 'brow', ax: -1.55, ay: 2.3, w: 1.7, h: .6, wind: 1.4, flutter: 1.2, steer: 1.2, r: .45 },
+  { id: 'browR', name: '오른 눈썹', kind: 'brow', mirror: true, ax: 1.55, ay: 2.3, w: 1.7, h: .6, wind: 1.4, flutter: 1.2, steer: 1.2, r: .45 },
+  { id: 'eyeL', name: '왼 눈', kind: 'eye', ax: -1.55, ay: 1.1, w: 1.5, h: .85, wind: 1.0, flutter: .8, steer: 1.0, r: .5 },
+  { id: 'eyeR', name: '오른 눈', kind: 'eye', mirror: true, ax: 1.55, ay: 1.1, w: 1.5, h: .85, wind: 1.0, flutter: .8, steer: 1.0, r: .5 },
+  { id: 'nose', name: '코', kind: 'nose', ax: 0, ay: -.55, w: 1.2, h: 1.7, wind: .5, flutter: .3, steer: .75, r: .55 },
+  { id: 'mouth', name: '입', kind: 'mouth', ax: 0, ay: -2.6, w: 2.5, h: 1.1, wind: 1.3, flutter: .7, steer: .9, r: .6 },
+];
+const settings = { wind: true, follow: true, slow: true, obs: { hand: true, fly: true, ball: true, bubble: true, fan: true, shades: true, foam: true } };
+
+// ---------- 캔버스 그림 ----------
+function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+
+function sticker(w, h, paint, mirror) {
+  const pad = 16, art = mk(w, h), a = art.getContext('2d');
+  if (mirror) { a.translate(w, 0); a.scale(-1, 1); }
+  const X = u => pad + u * (w - 2 * pad), Y = v => pad + v * (h - 2 * pad);
+  paint(a, X, Y, w - 2 * pad, h - 2 * pad);
+  const out = mk(w, h), o = out.getContext('2d');
+  for (let i = 0; i < 20; i++) { const t = i / 20 * Math.PI * 2; o.drawImage(art, Math.cos(t) * 9, Math.sin(t) * 9); }
+  o.globalCompositeOperation = 'source-in'; o.fillStyle = '#fff'; o.fillRect(0, 0, w, h);
+  o.globalCompositeOperation = 'source-over'; o.drawImage(art, 0, 0);
+  return out;
+}
+
+const PAINT = {
+  brow(c, X, Y) {
+    c.fillStyle = '#3b2618';
+    c.beginPath(); c.moveTo(X(0), Y(.9));
+    c.quadraticCurveTo(X(.42), Y(-.15), X(1), Y(.42));
+    c.lineTo(X(.98), Y(.7));
+    c.quadraticCurveTo(X(.45), Y(.35), X(.08), Y(1));
+    c.closePath(); c.fill();
+  },
+  eye(c, X, Y, W, H) {
+    const almond = () => { c.beginPath(); c.moveTo(X(0), Y(.55)); c.quadraticCurveTo(X(.5), Y(-.3), X(1), Y(.5)); c.quadraticCurveTo(X(.5), Y(1.2), X(0), Y(.55)); };
+    almond(); c.fillStyle = '#fffaf2'; c.fill();
+    c.save(); almond(); c.clip();
+    c.fillStyle = '#6a4326'; c.beginPath(); c.arc(X(.5), Y(.5), H * .4, 0, 7); c.fill();
+    c.fillStyle = '#140d0a'; c.beginPath(); c.arc(X(.5), Y(.5), H * .2, 0, 7); c.fill();
+    c.fillStyle = '#fff'; c.beginPath(); c.arc(X(.56), Y(.38), H * .08, 0, 7); c.fill();
+    c.restore();
+    almond(); c.strokeStyle = '#2a1a14'; c.lineWidth = 5; c.stroke();
+    c.beginPath(); c.moveTo(X(0), Y(.55)); c.quadraticCurveTo(X(.5), Y(-.3), X(1), Y(.5)); c.lineWidth = 9; c.stroke();
+  },
+  nose(c, X, Y) {
+    c.beginPath(); c.moveTo(X(.5), Y(0));
+    c.bezierCurveTo(X(.62), Y(.35), X(1), Y(.58), X(.94), Y(.84));
+    c.quadraticCurveTo(X(.5), Y(1.06), X(.06), Y(.84));
+    c.bezierCurveTo(X(0), Y(.58), X(.38), Y(.35), X(.5), Y(0));
+    c.fillStyle = '#e3a37c'; c.fill(); c.strokeStyle = '#a5643f'; c.lineWidth = 5; c.stroke();
+    c.fillStyle = '#7a4030';
+    c.beginPath(); c.ellipse(X(.32), Y(.82), 13, 8, .3, 0, 7); c.fill();
+    c.beginPath(); c.ellipse(X(.68), Y(.82), 13, 8, -.3, 0, 7); c.fill();
+    c.strokeStyle = 'rgba(255,240,225,.7)'; c.lineWidth = 6; c.lineCap = 'round';
+    c.beginPath(); c.moveTo(X(.52), Y(.18)); c.lineTo(X(.56), Y(.55)); c.stroke();
+  },
+  mouth(c, X, Y) {
+    c.beginPath(); c.moveTo(X(0), Y(.35));
+    c.quadraticCurveTo(X(.25), Y(0), X(.5), Y(.2)); c.quadraticCurveTo(X(.75), Y(0), X(1), Y(.35));
+    c.quadraticCurveTo(X(.5), Y(1.2), X(0), Y(.35));
+    c.fillStyle = '#d9465f'; c.fill();
+    const inner = () => { c.beginPath(); c.moveTo(X(.1), Y(.4)); c.quadraticCurveTo(X(.5), Y(.52), X(.9), Y(.4)); c.quadraticCurveTo(X(.5), Y(.9), X(.1), Y(.4)); };
+    inner(); c.fillStyle = '#5a1020'; c.fill();
+    c.save(); inner(); c.clip(); c.fillStyle = '#fff'; c.fillRect(X(0), Y(.3), X(1), Y(.58) - Y(.3)); c.restore();
+    c.strokeStyle = '#8f2236'; c.lineWidth = 4; inner(); c.stroke();
+  },
+  hand(c, X, Y) {
+    c.fillStyle = '#eab08c'; c.strokeStyle = '#a5643f'; c.lineWidth = 5;
+    const rr = (x, y, w, h, r) => { c.beginPath(); c.roundRect(X(x), Y(y), X(x + w) - X(x), Y(y + h) - Y(y), r); c.fill(); c.stroke(); };
+    rr(.18, 0, .14, .5, 20); rr(.36, -.0, .14, .46, 20); rr(.54, .03, .14, .46, 20); rr(.72, .1, .13, .42, 20);
+    c.save(); c.translate(X(.12), Y(.6)); c.rotate(-.6); c.beginPath(); c.roundRect(-18, -60, 36, 90, 18); c.fill(); c.stroke(); c.restore();
+    c.beginPath(); c.roundRect(X(.15), Y(.38), X(.88) - X(.15), Y(1) - Y(.38), 40); c.fill(); c.stroke();
+    c.strokeStyle = 'rgba(140,80,50,.5)'; c.lineWidth = 4;
+    c.beginPath(); c.moveTo(X(.3), Y(.6)); c.quadraticCurveTo(X(.55), Y(.7), X(.8), Y(.55)); c.stroke();
+    c.beginPath(); c.moveTo(X(.3), Y(.72)); c.quadraticCurveTo(X(.45), Y(.85), X(.5), Y(.98)); c.stroke();
+  },
+};
+
+function partCanvas(p) { return sticker(256, Math.round(256 * p.h / p.w), PAINT[p.kind], p.mirror); }
+
+function faceTexture() {
+  const c = mk(512, 640), x = c.getContext('2d');
+  const cx = 256, cy = 320, rx = FACE_RX / 11 * 512, ry = FACE_RY / 13.75 * 640;
+  x.fillStyle = '#2b1d1a'; x.beginPath(); x.ellipse(cx, cy - 70, rx + 26, ry - 10, 0, 0, 7); x.fill();
+  x.fillStyle = '#e2a57e';
+  x.beginPath(); x.ellipse(cx - rx + 4, cy + 10, 30, 56, -.15, 0, 7); x.fill();
+  x.beginPath(); x.ellipse(cx + rx - 4, cy + 10, 30, 56, .15, 0, 7); x.fill();
+  const g = x.createRadialGradient(cx, cy - 40, 30, cx, cy, ry);
+  g.addColorStop(0, '#f6cfae'); g.addColorStop(1, '#dea07a');
+  x.fillStyle = g; x.beginPath(); x.ellipse(cx, cy, rx, ry, 0, 0, 7); x.fill();
+  x.fillStyle = '#2b1d1a'; x.beginPath();
+  x.moveTo(cx - rx - 4, cy - 60);
+  x.quadraticCurveTo(cx - rx + 10, cy - ry - 30, cx, cy - ry - 8);
+  x.quadraticCurveTo(cx + rx - 10, cy - ry - 30, cx + rx + 4, cy - 60);
+  x.quadraticCurveTo(cx + 60, cy - ry + 40, cx - 20, cy - ry + 26);
+  x.quadraticCurveTo(cx - rx + 40, cy - ry + 50, cx - rx - 4, cy - 60);
+  x.fill();
+  x.fillStyle = 'rgba(240,120,130,.22)';
+  x.beginPath(); x.arc(cx - 120, cy + 70, 40, 0, 7); x.fill();
+  x.beginPath(); x.arc(cx + 120, cy + 70, 40, 0, 7); x.fill();
+  return c;
+}
+
+function boardTexture() {
+  const s = 512, c = mk(s, s), x = c.getContext('2d'), m = s / 2;
+  x.fillStyle = '#14101f'; x.beginPath(); x.arc(m, m, m, 0, 7); x.fill();
+  for (let i = 0; i < 20; i++) {
+    const a0 = (i - .5) / 20 * Math.PI * 2, a1 = (i + .5) / 20 * Math.PI * 2;
+    x.fillStyle = i % 2 ? '#e9dcc4' : '#2a2147';
+    x.beginPath(); x.moveTo(m, m); x.arc(m, m, m * .96, a0, a1); x.fill();
+    x.fillStyle = i % 2 ? '#3ea67a' : '#d94a5c';
+    x.beginPath(); x.arc(m, m, m * .96, a0, a1); x.arc(m, m, m * .88, a1, a0, true); x.fill();
+  }
+  return c;
+}
+
+// ---------- 3D ----------
+const app = document.getElementById('app');
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x1b1530);
+scene.fog = new THREE.Fog(0x1b1530, 30, 75);
+const camera = new THREE.PerspectiveCamera(46, 1, .05, 200);
+
+const tex = c => { const t = new THREE.CanvasTexture(c); t.anisotropy = 4; return t; };
+const flat = (w, h, map, extra) => new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+  new THREE.MeshBasicMaterial(Object.assign({ map, transparent: true, alphaTest: .08, side: THREE.DoubleSide }, extra)));
+
+const wall = new THREE.Mesh(new THREE.PlaneGeometry(120, 60), new THREE.MeshBasicMaterial({ color: 0x231b3d }));
+wall.position.set(0, 0, FACE_Z - 1); scene.add(wall);
+const board = new THREE.Mesh(new THREE.CircleGeometry(BOARD_R, 72), new THREE.MeshBasicMaterial({ map: tex(boardTexture()) }));
+board.position.set(0, 0, FACE_Z - .1); scene.add(board);
+const face = flat(11, 13.75, tex(faceTexture()));
+face.position.set(0, 0, FACE_Z - .03); scene.add(face);
+
+{ // 바닥 격자, 레인 불빛, 던지는 선(오키)
+  const c = mk(256, 256), x = c.getContext('2d');
+  x.fillStyle = '#1e1736'; x.fillRect(0, 0, 256, 256);
+  x.strokeStyle = '#3a2f63'; x.lineWidth = 3; x.strokeRect(0, 0, 256, 256);
+  const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 12);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 48), new THREE.MeshBasicMaterial({ map: t }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -8, -14); scene.add(floor);
+  const oche = new THREE.Mesh(new THREE.PlaneGeometry(10, .25), new THREE.MeshBasicMaterial({ color: 0xffcc3d }));
+  oche.rotation.x = -Math.PI / 2; oche.position.set(0, -7.98, 0); scene.add(oche);
+  const pts = [];
+  for (let z = 6; z > FACE_Z; z -= 2.5) pts.push(-9, -7.8, z, 9, -7.8, z);
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffcc3d, size: .25 })));
+}
+
+// 바람 가루
+const DUST = 200, dustPos = new Float32Array(DUST * 3);
+for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dustPos[i * 3 + 1] = (Math.random() - .5) * 16; dustPos[i * 3 + 2] = 6 - Math.random() * 36; }
+const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc9c2ff, size: .06, transparent: true, opacity: .5 })));
+
+// 장애물: 손바닥
+const hand = { mesh: flat(3.2, 4.0, tex(sticker(256, 320, PAINT.hand))), x: 0, y: 0, z: -17 };
+hand.mesh.position.z = hand.z; scene.add(hand.mesh);
+
+// 장애물: 파리
+const flies = [-8, -12, -21, -26].map((z, i) => {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x0c0a12 })));
+  const eyeM = new THREE.MeshBasicMaterial({ color: 0xc0303a });
+  [-1, 1].forEach(s => { const e = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 6), eyeM); e.position.set(s * .1, .08, .15); g.add(e); });
+  const wingM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .55, side: THREE.DoubleSide });
+  const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(.38, .2), wingM); w.position.set(s * .22, .12, 0); g.add(w); return w; });
+  scene.add(g);
+  return { g, wings, z, cx: (Math.random() - .5) * 5, cy: (Math.random() - .5) * 5, ph: Math.random() * 6, sp: .7 + i * .15, knock: 0, kv: new V3() };
+});
+
+// 장애물: 거품 (얼굴 바로 앞에서 천천히 미끄러지며 얼굴 일부를 가린다. 다트는 통과)
+function foamTexture() {
+  const c = mk(256, 200), x = c.getContext('2d');
+  for (let i = 0; i < 70; i++) {
+    const r = 8 + Math.random() * 26, px = 30 + Math.random() * 196, py = 30 + Math.random() * 140;
+    x.fillStyle = '#f4fbff'; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+    x.strokeStyle = 'rgba(150,190,220,.6)'; x.lineWidth = 2; x.stroke();
+    x.fillStyle = 'rgba(255,255,255,1)'; x.beginPath(); x.arc(px - r * .35, py - r * .35, r * .22, 0, 7); x.fill();
+  }
+  return tex(c);
+}
+const foam = Array.from({ length: 3 }, (_, i) => {
+  const m = flat(3.6, 2.8, foamTexture()); scene.add(m);
+  return { m, x: 0, y: 0, z: FACE_Z + 2.2 + i * .3, sp: .35 + i * .12, ph: i * 2.1 };
+});
+function resetFoam() { foam.forEach((f, i) => { f.y = [2, -.4, -2.8][i] + (Math.random() - .5) * .8; f.ph = Math.random() * 6; }); }
+
+// 장애물: 탱탱볼 (위아래로 통통 튀고, 맞으면 다트가 튕겨 나간다)
+const BALL_COLORS = [0xff7aa8, 0x5fc8ff, 0xffd23d];
+const balls = BALL_COLORS.map((col, i) => {
+  const m = new THREE.Mesh(new THREE.SphereGeometry(.55, 20, 14), new THREE.MeshBasicMaterial({ color: col }));
+  const band = new THREE.Mesh(new THREE.TorusGeometry(.55, .07, 8, 28), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+  band.rotation.y = Math.PI / 2; m.add(band);
+  scene.add(m);
+  return { m, x: 0, z: [-9, -15, -23][i], ph: Math.random() * 6, sp: 2.2 + i * .4, floor: -4, h: 6, vx: 0 };
+});
+function resetBalls() { balls.forEach(b => { b.x = (Math.random() - .5) * 7; b.vx = (Math.random() - .5) * 1.5; b.floor = -4.5 + Math.random() * 2; }); }
+
+// 장애물: 큰 비눗방울 하나 (레인 가운데를 둥둥 떠다니고, 맞으면 터지면서 다트를 튕겨낸다)
+const BUBBLE_R = 1.9;
+const bubble = { g: new THREE.Group(), x: 0, y: 0, z: -14, ph: 0, pop: 0, popped: false };
+{
+  bubble.g.add(new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_R, 32, 20),
+    new THREE.MeshBasicMaterial({ color: 0xbfe8ff, transparent: true, opacity: .2, depthWrite: false })));
+  const rim = new THREE.Mesh(new THREE.SphereGeometry(BUBBLE_R * 1.01, 32, 20),
+    new THREE.MeshBasicMaterial({ color: 0xff9ad8, transparent: true, opacity: .14, side: THREE.BackSide, depthWrite: false }));
+  bubble.g.add(rim);
+  const shineMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .85 });
+  const s1 = new THREE.Mesh(new THREE.SphereGeometry(.26, 10, 8), shineMat); s1.position.set(-.7, .8, 1.55); s1.scale.set(1, .6, .3);
+  const s2 = new THREE.Mesh(new THREE.SphereGeometry(.12, 8, 6), shineMat); s2.position.set(-1.05, .45, 1.45);
+  bubble.g.add(s1, s2);
+  scene.add(bubble.g);
+}
+function resetBubble() {
+  bubble.x = (Math.random() - .5) * 4; bubble.y = (Math.random() - .5) * 3; bubble.ph = Math.random() * 6;
+  bubble.pop = 0; bubble.popped = false; bubble.g.scale.setScalar(1);
+}
+
+// 장애물: 선풍기 (바람은 좌우를 맡으니, 선풍기는 아래나 위에서 불어 다트를 위아래로 민다)
+const fan = { g: new THREE.Group(), blades: new THREE.Group(), dir: 1, z: -11, zone: 3 };
+{
+  fan.g.add(new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x8fa6cf })));
+  const bm = new THREE.MeshBasicMaterial({ color: 0xeef4ff, side: THREE.DoubleSide });
+  for (let i = 0; i < 3; i++) {
+    const h = new THREE.Group(), b = new THREE.Mesh(new THREE.PlaneGeometry(.42, .95), bm);
+    b.position.set(0, .5, .02); h.rotation.z = i * Math.PI * 2 / 3; h.add(b); fan.blades.add(h);
+  }
+  fan.g.add(fan.blades);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.08, 1.2, 32), new THREE.MeshBasicMaterial({ color: 0x4a5878, side: THREE.DoubleSide }));
+  ring.position.z = .03; fan.g.add(ring);
+  fan.g.scale.setScalar(.95);
+  scene.add(fan.g);
+}
+// 세로 바람 줄무늬
+const flowCanvas = mk(128, 256);
+{
+  const x = flowCanvas.getContext('2d');
+  x.strokeStyle = 'rgba(255,255,255,.9)'; x.lineCap = 'round';
+  for (let i = 0; i < 22; i++) {
+    const x0 = Math.random() * 128, y0 = Math.random() * 256, l = 30 + Math.random() * 70;
+    x.lineWidth = 1 + Math.random() * 2; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x0, y0 + l); x.stroke();
+  }
+}
+const flowTex = tex(flowCanvas); flowTex.wrapT = THREE.RepeatWrapping;
+const fanFlow = new THREE.Mesh(new THREE.PlaneGeometry(6, 12), new THREE.MeshBasicMaterial({ map: flowTex, transparent: true, opacity: .28, depthWrite: false }));
+scene.add(fanFlow);
+
+// 장애물: 선글라스 (눈 높이에서 얼굴 앞을 좌우로 오간다)
+const shades = {
+  mesh: flat(3.4, 1.15, tex(sticker(384, 140, (c, X, Y) => {
+    c.fillStyle = '#16131f'; c.strokeStyle = '#ffcc3d'; c.lineWidth = 6;
+    [[0, .44], [.56, 1]].forEach(([a, b]) => { c.beginPath(); c.roundRect(X(a), Y(.05), X(b) - X(a), Y(.95) - Y(.05), 26); c.fill(); c.stroke(); });
+    c.fillRect(X(.42), Y(.25), X(.58) - X(.42), 10);
+    c.fillStyle = 'rgba(255,255,255,.35)'; c.fillRect(X(.06), Y(.2), 22, 8); c.fillRect(X(.62), Y(.2), 22, 8);
+  }))),
+  x: 0, y: 1.1, z: FACE_Z + 1.6,
+};
+scene.add(shades.mesh);
+
+// 이번 던지기의 장애물: 켜 둔 것 중 2~3개를 무작위로
+const OBS = { hand: '손바닥', fly: '파리', ball: '탱탱볼', bubble: '큰 비눗방울', fan: '선풍기', shades: '선글라스', foam: '거품' };
+let active = {};
+function pickObstacles() {
+  const on = Object.keys(OBS).filter(k => settings.obs[k]).sort(() => Math.random() - .5);
+  const chosen = on.slice(0, Math.min(on.length, 2 + (Math.random() < .5 ? 1 : 0)));
+  active = {}; chosen.forEach(k => { active[k] = true; });
+  resetFoam(); resetBalls(); resetBubble();
+  // dir 1 = 아래에서 위로, -1 = 위에서 아래로. 카메라 쪽으로 살짝 기울여 날개가 보이게
+  fan.dir = Math.random() < .5 ? -1 : 1;
+  fan.g.position.set((Math.random() - .5) * 3, -fan.dir * 6.6, fan.z); fan.g.rotation.set(-fan.dir * (Math.PI / 2 - .55), 0, 0);
+  fanFlow.position.set(fan.g.position.x, 0, fan.z);
+  hand.mesh.visible = !!active.hand; flies.forEach(f => { f.g.visible = !!active.fly; });
+  balls.forEach(b => { b.m.visible = !!active.ball; }); bubble.g.visible = !!active.bubble;
+  foam.forEach(f => { f.m.visible = !!active.foam; });
+  fan.g.visible = fanFlow.visible = !!active.fan; shades.mesh.visible = !!active.shades;
+  ui.obs.textContent = chosen.length ? '장애물: ' + chosen.map(k => OBS[k]).join(' · ') : '';
+}
+
+// 세기 화살표: 화면 위 다트 촉에서 위로 뻗는다. 길이·색 = 세기, 기울기 = 좌우 각도 (과녁까지 닿지 않음)
+const aimArrow = { set visible(v) { ui.parrow.hidden = !v; } };
+const tipScreen = new V3();
+function drawPowerArrow(a) {
+  tipScreen.copy(held.position).project(camera);
+  const r = app.getBoundingClientRect(), x = (tipScreen.x + 1) / 2 * r.width, y = (1 - tipScreen.y) / 2 * r.height;
+  const len = 34 + a.power * 120, el = ui.parrow;
+  el.style.left = x + 'px'; el.style.top = (y - len) + 'px'; el.style.height = len + 'px';
+  el.style.transform = `rotate(${a.yaw * 180 / Math.PI * 3}deg)`;
+  el.style.color = `hsl(${120 - a.power * 120}, 85%, 58%)`;
+}
+
+const partTex = {}, partImg = {};
+PARTS.forEach(p => { const c = partCanvas(p); partTex[p.id] = c; partImg[p.id] = c.toDataURL(); });
+function partCard(p, opts) { return flat(p.w, p.h, tex(partTex[p.id]), opts); }
+
+// 다트: 촉이 원점, 몸통은 +z 쪽. 그룹의 -z가 날아가는 방향
+const MAT = {
+  steel: new THREE.MeshBasicMaterial({ color: 0xd5d9e3 }),
+  barrel: new THREE.MeshBasicMaterial({ color: 0x4a5066 }),
+  ring: new THREE.MeshBasicMaterial({ color: 0x9aa3b8 }),
+  shaft: new THREE.MeshBasicMaterial({ color: 0x1a1a22 }),
+};
+const FLIGHT_COLORS = { brow: 0xffcc3d, eye: 0x5fe0a8, nose: 0xff9a5c, mouth: 0xff5d73 };
+function makeDart(p) {
+  const g = new THREE.Group();
+  const tip = new THREE.Mesh(new THREE.ConeGeometry(.035, .5, 10), MAT.steel);
+  tip.rotation.x = -Math.PI / 2; tip.position.z = .25; g.add(tip);
+  const barrel = new THREE.Mesh(new THREE.CylinderGeometry(.07, .08, .9, 14), MAT.barrel);
+  barrel.rotation.x = Math.PI / 2; barrel.position.z = .95; g.add(barrel);
+  [.68, .85, 1.02, 1.19].forEach(z => {
+    const r = new THREE.Mesh(new THREE.CylinderGeometry(.083, .083, .04, 14), MAT.ring);
+    r.rotation.x = Math.PI / 2; r.position.z = z; g.add(r);
+  });
+  const shaft = new THREE.Mesh(new THREE.CylinderGeometry(.028, .028, .7, 8), MAT.shaft);
+  shaft.rotation.x = Math.PI / 2; shaft.position.z = 1.75; g.add(shaft);
+  const flights = new THREE.Group(); flights.position.z = 2.0;
+  const fm = new THREE.MeshBasicMaterial({ color: FLIGHT_COLORS[p.kind], side: THREE.DoubleSide, transparent: true, opacity: .92 });
+  const shape = new THREE.Shape(); shape.moveTo(0, -.25); shape.lineTo(.3, .05); shape.lineTo(.3, .3); shape.lineTo(0, .2); shape.lineTo(0, -.25);
+  const fg = new THREE.ShapeGeometry(shape);
+  for (let i = 0; i < 4; i++) {
+    const f = new THREE.Mesh(fg, fm); f.rotation.x = Math.PI / 2; const holder = new THREE.Group(); holder.rotation.z = i * Math.PI / 2; holder.add(f); flights.add(holder);
+  }
+  g.add(flights);
+  const card = partCard(p); card.position.z = .42; card.scale.setScalar(.75); g.add(card);
+  g.userData = { flights, card };
+  return g;
+}
+const FWD = new V3(0, 0, -1);
+function pointDart(d, dir) { d.quaternion.setFromUnitVectors(FWD, dir.clone().normalize()); }
+
+// ---------- 소리 ----------
+let ac = null, soundOn = true;
+function audio() {
+  if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) { ac = null; } }
+  if (ac && ac.state === 'suspended') ac.resume();
+  return ac;
+}
+function tone(f0, f1, dur, type, vol) {
+  if (!soundOn || !ac) return;
+  const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime;
+  o.type = type; o.frequency.setValueAtTime(f0, t); o.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.001, t + dur);
+  o.connect(g).connect(ac.destination); o.start(t); o.stop(t + dur);
+}
+function noise(dur, vol, freq, type) {
+  if (!soundOn || !ac) return;
+  const n = Math.floor(ac.sampleRate * dur), b = ac.createBuffer(1, n, ac.sampleRate), d = b.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / n) ** 2;
+  const s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain();
+  s.buffer = b; f.type = type || 'bandpass'; f.frequency.value = freq; f.Q.value = 1.2; g.gain.value = vol;
+  s.connect(f).connect(g).connect(ac.destination); s.start();
+}
+const sfx = {
+  throw() { noise(.3, .45, 1600); },
+  stick() { noise(.05, .9, 3500, 'highpass'); tone(140, 55, .16, 'sine', .5); setTimeout(() => tone(900, 700, .25, 'triangle', .05), 30); },
+  knock() { tone(1200, 800, .08, 'square', .08); },
+  block() { tone(320, 120, .25, 'square', .12); noise(.12, .4, 600); },
+  fly() { tone(220, 140, .18, 'sawtooth', .08); },
+  miss() { tone(300, 90, .4, 'sine', .15); },
+  pop() { tone(900, 1900, .08, 'sine', .18); noise(.04, .3, 4000, 'highpass'); },
+  boing() { tone(180, 520, .18, 'sine', .25); setTimeout(() => tone(520, 260, .15, 'sine', .12), 120); },
+  done() { [523, 659, 784, 1046].forEach((f, i) => setTimeout(() => tone(f, f, .25, 'triangle', .12), i * 110)); },
+};
+const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (e) {} };
+
+// ---------- UI ----------
+const $ = id => document.getElementById(id);
+const ui = { round: $('round'), wind: $('wind'), hint: $('hint'), obs: $('obs'), parts: $('parts'), stick: $('stick'), knob: $('knob'), toast: $('toast'),
+  repos: $('reposBtn'), parrow: $('parrow') };
+PARTS.forEach(p => {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'part'; b.id = 'part-' + p.id;
+  b.innerHTML = `<img alt="" src="${partImg[p.id]}"><span>${p.name}<em></em></span>`;
+  b.addEventListener('click', () => { if (state === 'aim' && !used.has(p.id)) select(p); });
+  ui.parts.appendChild(b);
+});
+let toastTimer = 0;
+function toast(big, small) {
+  ui.toast.innerHTML = `${big}${small ? `<small>${small}</small>` : ''}`;
+  ui.toast.classList.remove('out'); clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => ui.toast.classList.add('out'), 1300);
+}
+function setHint(t) { ui.hint.textContent = t; }
+
+// ---------- 게임 상태 ----------
+let state = 'aim', current = PARTS[0], held = null, dart = null, timer = 0, slow = 1, shake = 0;
+const used = new Set(), stuck = [], results = {}, wind = { x: 0, y: 0 };
+let ghosts = [];
+// 던지는 자리: 상하좌우(throwX, throwY). 조준은 2단계: place(자리 고르기) → pull(당겨서 세기·각도)
+const REST_Y = -.9, LINE_Y_MIN = -4, LINE_Y_MAX = 3.6;
+let aimPhase = 'place', throwX = 0, throwY = REST_Y;
+const MAX_PULL = () => Math.min(app.clientHeight * .3, 230);
+function restPose() { held.position.set(throwX, throwY, 0); pointDart(held, new V3(0, .1, -1)); }
+
+function newWind() {
+  wind.x = settings.wind ? (Math.random() * 2 - 1) * 1.8 : 0;
+  wind.y = settings.wind ? (Math.random() * 2 - 1) * .6 : 0;
+  const a = Math.abs(wind.x);
+  ui.wind.innerHTML = a < .4 ? '바람 없음' :
+    `바람 <b>${(wind.x < 0 ? '◀' : '▶').repeat(a < 1.2 ? 1 : a < 2 ? 2 : 3)}</b> ${a.toFixed(1)}`;
+}
+function refreshButtons() {
+  PARTS.forEach(p => {
+    const b = $('part-' + p.id), r = results[p.id];
+    b.classList.toggle('sel', p === current && state === 'aim');
+    b.classList.toggle('used', used.has(p.id));
+    b.disabled = used.has(p.id);
+    b.querySelector('em').textContent = r ? `${r.score}점` : '';
+  });
+  ui.round.innerHTML = `${Math.min(used.size + 1, 6)}/6<small>${current.name}</small>`;
+}
+function select(p) {
+  current = p;
+  if (held) scene.remove(held);
+  held = makeDart(p); restPose(); scene.add(held);
+  refreshButtons();
+}
+function toAim() {
+  state = 'aim';
+  const next = used.has(current.id) ? PARTS.find(p => !used.has(p.id)) : current;
+  newWind(); pickObstacles(); select(next); toPlace();
+}
+function toPlace() {
+  aimPhase = 'place'; ui.repos.hidden = true;
+  setHint('① 누른 채 끌어서 노릴 곳 앞에 다트를 두고 손을 떼세요');
+}
+function toPull() {
+  aimPhase = 'pull'; ui.repos.hidden = false;
+  setHint('② 아래로 당겼다 놓기. 당긴 길이 = 세기, 당긴 방향 = 좌우 각도');
+}
+ui.repos.addEventListener('click', () => { if (state === 'aim') toPlace(); });
+function newRound() {
+  stuck.forEach(s => { scene.remove(s.card); scene.remove(s.dart); }); stuck.length = 0;
+  ghosts.forEach(g => scene.remove(g)); ghosts = [];
+  used.clear(); Object.keys(results).forEach(k => delete results[k]);
+  $('result').hidden = true; ui.parts.hidden = false;
+  current = PARTS[0]; toAim();
+}
+
+// 거의 똑바로 당기면 정면(0°)으로 붙고, 30px 넘게 당기기 전엔 각도를 읽지 않는다(누르는 순간의 흔들림 무시)
+function pullOf(p) {
+  const dx = p.x - p.x0, dy = p.y - p.y0, L = MAX_PULL(), len = Math.hypot(dx, dy);
+  const power = dy > 0 ? Math.min(1, len / L) : 0;
+  let ang = Math.max(-.6, Math.min(.6, Math.atan2(-dx, Math.max(dy, 1))));
+  ang = Math.abs(ang) < .07 ? 0 : ang - Math.sign(ang) * .07;
+  return { power, yaw: ang * .3, dy, ok: len > 30 };
+}
+// 화면에 보이는 값 = 놓을 때 쓰는 값. 살짝 늦게 따라와서 손을 떼는 순간의 미끄러짐은 반영되지 않는다
+function smoothPull(p, rdt) {
+  const a = pullOf(p), k = 1 - Math.exp(-rdt * 12);
+  if (!p.s) p.s = { power: a.power, yaw: 0 };
+  p.s.power += (a.power - p.s.power) * k;
+  if (a.ok) p.s.yaw += (a.yaw - p.s.yaw) * k;
+  p.s.dy = a.dy;
+  return p.s;
+}
+const degText = yaw => { const d = Math.round(Math.abs(yaw) * 180 / Math.PI); return d === 0 ? '정면' : `${yaw > 0 ? '오른쪽' : '왼쪽'} ${d}°`; };
+// 다트는 놓인 자리 바로 앞(같은 높이·좌우)을 노린다. 세기 = 빠르기:
+// 세면 거의 그대로 꽂히고, 약하면 조금 처지고 바람·장애물 영향을 오래 받는다
+function shotOf(power, yaw, P) {
+  const D = P.z - FACE_Z, vz = 22 + power * 20, t = D / vz;
+  const h = P.y - (1 - power) * 1.8;
+  return new V3(Math.sin(yaw) * vz, (h - P.y + G * t * t / 2) / t, -Math.cos(yaw) * vz);
+}
+function launch(power, yaw) {
+  const P = held.position.clone(), vel = shotOf(power, yaw, P);
+  dart = {
+    p: current, mesh: held, pos: P, vel,
+    rot: 0, spin: (Math.random() - .5) * .5 * current.flutter, wobble: 0, t: 0, jx: 0, jy: 0, roll: 0,
+  };
+  held = null; state = 'fly'; ui.repos.hidden = true; aimArrow.visible = false;
+  refreshButtons(); sfx.throw(); buzz(15);
+  setHint('누른 채 끌면 그쪽으로 틀어요. 많이 틀수록 느려지고 흔들려요');
+}
+
+function wrapAngle(a) { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; }
+function scoreOf(p, x, y, rot, where) {
+  if (where !== 'face') return 0;
+  const d = Math.hypot(x - p.ax, y - p.ay);
+  const pos = Math.max(0, 1 - d / (DIAG * .22));
+  const deg = Math.abs(wrapAngle(rot)) * 180 / Math.PI;
+  return Math.round(100 * pos * Math.max(0, 1 - deg / 300));
+}
+const NOTE = { face: '', board: '얼굴 밖', blocked: '막힘', miss: '빗나감' };
+
+function finish(where) {
+  const d = dart, p = d.p;
+  used.add(p.id);
+  if (where === 'face' || where === 'board') {
+    // 카드는 얼굴에 납작하게 꽂고, 다트는 들어온 각도 그대로 박혀서 떨린다
+    const card = d.mesh.userData.card; d.mesh.remove(card);
+    card.scale.setScalar(1); card.position.set(d.pos.x, d.pos.y, FACE_Z + .01 + stuck.length * .004);
+    card.rotation.set(0, 0, d.roll); scene.add(card);
+    d.mesh.position.set(d.pos.x, d.pos.y, FACE_Z - .12);
+    stuck.push({ p, card, dart: d.mesh, base: d.mesh.quaternion.clone(), hitT: T, x: d.pos.x, y: d.pos.y, rot: d.roll, where });
+  } else scene.remove(d.mesh);
+  const sc = scoreOf(p, d.pos.x, d.pos.y, d.roll, where);
+  const note = (where === 'blocked' && d.blockNote) || NOTE[where];
+  results[p.id] = { score: sc, where, note };
+  const tilt = Math.round(Math.abs(wrapAngle(d.roll)) * 180 / Math.PI);
+  toast(where === 'face' ? `+${sc}` : '0', where === 'face' ? `${p.name} · 기울기 ${tilt}°` : note);
+  dart = null; state = 'impact'; timer = 1.6; refreshButtons();
+}
+
+function stickHit() {
+  const d = dart, p = d.p, x = d.pos.x, y = d.pos.y;
+  const onFace = (x / FACE_RX) ** 2 + (y / FACE_RY) ** 2 <= 1;
+  const onBoard = Math.hypot(x, y) <= BOARD_R - .2;
+  if (!onFace && !onBoard) { d.falling = true; d.fallEnd = d.t + 1; d.vel.set(d.vel.x * .2, -2, 3); sfx.miss(); return; }
+  // 먼저 꽂힌 부위를 맞히면 그 부위가 밀리고 돌아간다
+  stuck.forEach(s => {
+    const dx = s.x - x, dy = s.y - y, dist = Math.hypot(dx, dy);
+    if (dist < (p.r + s.p.r) * .85) {
+      const k = .6 / Math.max(dist, .05);
+      s.x += dx * k; s.y += dy * k; s.rot += (Math.random() < .5 ? -1 : 1) * (.35 + Math.random() * .3);
+      s.card.position.x = s.x; s.card.position.y = s.y; s.card.rotation.z = s.rot;
+      s.dart.position.x = s.x; s.dart.position.y = s.y; s.hitT = T;
+      if (s.where === 'face' && (s.x / FACE_RX) ** 2 + (s.y / FACE_RY) ** 2 > 1) s.where = 'board';
+      results[s.p.id] = { score: scoreOf(s.p, s.x, s.y, s.rot, s.where), where: s.where };
+      sfx.knock();
+    }
+  });
+  sfx.stick(); buzz(onFace ? 30 : 15); if (!reduceMotion) shake = .18;
+  finish(onFace ? 'face' : 'board');
+}
+
+function blockDart(d, note) {
+  d.falling = true; d.blocked = true; d.blockNote = note; d.fallEnd = d.t + 1.1;
+  d.vel.set((Math.random() - .5) * 4, 2, Math.abs(d.vel.z) * .25);
+  sfx.block(); buzz(60); if (!reduceMotion) shake = .25;
+  toast('막혔다!', note);
+}
+
+let steerKeys = { x: 0, y: 0 }, steerPtr = { x: 0, y: 0 };
+function stepDart(dt) {
+  const d = dart, p = d.p;
+  d.t += dt;
+  if (d.falling) {
+    d.vel.y -= 14 * dt; d.pos.addScaledVector(d.vel, dt);
+    d.mesh.position.copy(d.pos); d.mesh.rotateX(5 * dt);
+    if (d.t > d.fallEnd) finish(d.blocked ? 'blocked' : 'miss');
+    return;
+  }
+  let sx = steerPtr.x + steerKeys.x, sy = steerPtr.y + steerKeys.y;
+  const sl = Math.hypot(sx, sy); if (sl > 1) { sx /= sl; sy /= sl; }
+  const s = Math.min(1, sl);
+  d.jx += ((Math.random() * 2 - 1) * p.flutter * 2.5 - d.jx) * Math.min(1, dt * 3);
+  d.jy += ((Math.random() * 2 - 1) * p.flutter * 1.5 - d.jy) * Math.min(1, dt * 3);
+  d.vel.x += (wind.x * p.wind + sx * 8 * p.steer + d.jx) * dt;
+  d.vel.y += (-G + wind.y * p.wind + sy * 8 * p.steer + d.jy) * dt;
+  d.vel.z *= 1 - s * .22 * dt;
+  d.wobble = Math.min(2, d.wobble + s * dt * 1.4) * (1 - dt * .7);
+  d.rot += d.spin * dt;
+  d.roll = d.rot + Math.sin(d.t * (6 + p.flutter * 4)) * (.08 + d.wobble * .3) * p.flutter;
+  const prevZ = d.pos.z;
+  d.pos.addScaledVector(d.vel, dt);
+  d.mesh.position.copy(d.pos);
+  pointDart(d.mesh, d.vel);
+  d.mesh.userData.flights.rotation.z += dt * 14;
+  d.mesh.userData.card.rotation.z = d.roll;
+
+  const crossed = z => prevZ > z && d.pos.z <= z;
+  if (active.hand && crossed(hand.z) &&
+      Math.abs(d.pos.x - hand.x) < 1.5 + p.r * .4 && Math.abs(d.pos.y - hand.y) < 1.9 + p.r * .4) { blockDart(d, '손바닥에 막힘'); return; }
+  if (active.ball) balls.forEach(b => {
+    const dist = b.m.position.distanceTo(d.pos);
+    if (b.cool > 0 || dist > .55 + p.r * .6) return;
+    const dx = (d.pos.x - b.m.position.x) / Math.max(dist, .05), dy = (d.pos.y - b.m.position.y) / Math.max(dist, .05);
+    d.vel.x += dx * 6; d.vel.y += dy * 5; d.vel.z *= .85; d.spin += (Math.random() - .5) * 5;
+    b.cool = .5; b.squash = .3; sfx.boing(); buzz(25);
+  });
+  if (active.shades && crossed(shades.z) &&
+      Math.abs(d.pos.x - shades.x) < 1.7 + p.r * .3 && Math.abs(d.pos.y - shades.y) < .58 + p.r * .3) { blockDart(d, '선글라스에 막힘'); return; }
+  if (active.fan && Math.abs(d.pos.z - fan.z) < fan.zone && Math.abs(d.pos.x - fan.g.position.x) < 3) {
+    d.vel.y += fan.dir * 13 * dt; d.wobble = Math.min(2, d.wobble + dt * .8);
+  }
+  if (active.bubble && !bubble.popped) {
+    const bp = bubble.g.position, dist = bp.distanceTo(d.pos);
+    if (dist < BUBBLE_R + p.r * .4) {
+      // 터지면서 다트를 방울 중심 반대쪽으로 튕긴다
+      const nx = (d.pos.x - bp.x) / Math.max(dist, .1), ny = (d.pos.y - bp.y) / Math.max(dist, .1);
+      d.vel.x += nx * 5; d.vel.y += ny * 5 + 1; d.vel.z *= .9; d.spin += (Math.random() - .5) * 4;
+      bubble.popped = true; bubble.pop = .3; sfx.pop(); buzz(20);
+    }
+  }
+  if (active.fly) flies.forEach(f => {
+    if (f.knock > 0) return;
+    if (f.g.position.distanceTo(d.pos) < p.r * .8 + .3) {
+      const side = d.pos.x >= f.g.position.x ? 1 : -1;
+      d.vel.x += side * (2.5 + Math.random() * 2.5); d.vel.y += (Math.random() - .5) * 3; d.vel.z *= .85; d.spin += (Math.random() - .5) * 6;
+      f.knock = 2; f.kv.set(-side * 6, 3, 4); sfx.fly(); buzz(25);
+    }
+  });
+  if (d.pos.z <= FACE_Z) { d.pos.z = FACE_Z; stickHit(); return; }
+  if (d.pos.y < -8) { d.falling = true; d.fallEnd = d.t; }
+}
+
+function showResult() {
+  state = 'result';
+  const total = PARTS.reduce((a, p) => a + (results[p.id] ? results[p.id].score : 0), 0);
+  const verdict = total >= 480 ? '거의 본인' : total >= 340 ? '닮은 사촌' : total >= 200 ? '피카소 시기' : '누구세요?';
+  $('resTitle').innerHTML = `${verdict}<small>${total} / 600</small>`;
+  $('resRows').innerHTML = PARTS.map(p => {
+    const r = results[p.id];
+    return `<div><span>${p.name}</span><b>${r.where === 'face' ? r.score + '점' : '0점 · ' + (r.note || NOTE[r.where])}</b></div>`;
+  }).join('');
+  // 결과 화면에선 시야 가리는 것들을 걷어낸다
+  foam.forEach(f => { f.m.visible = false; });
+  ui.parts.hidden = true; $('result').hidden = false; $('ghostBtn').textContent = '정답 자리 보기';
+  setHint(''); sfx.done();
+}
+$('againBtn').addEventListener('click', newRound);
+$('ghostBtn').addEventListener('click', () => {
+  if (ghosts.length) { ghosts.forEach(g => scene.remove(g)); ghosts = []; $('ghostBtn').textContent = '정답 자리 보기'; return; }
+  ghosts = PARTS.map(p => {
+    const g = partCard(p, { opacity: .35, depthWrite: false });
+    g.position.set(p.ax, p.ay, FACE_Z - .02); scene.add(g); return g;
+  });
+  $('ghostBtn').textContent = '정답 자리 숨기기';
+});
+
+// 설정·소리
+const optMap = { optWind: 'wind', optFollow: 'follow', optSlow: 'slow' };
+Object.keys(optMap).forEach(id => $(id).addEventListener('change', e => { settings[optMap[id]] = e.target.checked; }));
+document.querySelectorAll('[data-obs]').forEach(el => el.addEventListener('change', () => { settings.obs[el.dataset.obs] = el.checked; }));
+$('optBtn').addEventListener('click', () => { $('opts').hidden = !$('opts').hidden; });
+$('optClose').addEventListener('click', () => { $('opts').hidden = true; });
+$('soundBtn').addEventListener('click', () => {
+  soundOn = !soundOn; audio(); $('soundBtn').textContent = soundOn ? '소리 켬' : '소리 끔';
+});
+
+// ---------- 입력 ----------
+// 조준 ①: 누른 채 좌우로 끌어 던질 자리를 옮기고, 떼면 고정
+// 조준 ②: 아래로 당겼다 놓으면 발사. 당긴 길이 = 세기, 당긴 방향 = 좌우 각도
+let ptr = null;
+canvas.addEventListener('pointerdown', e => {
+  audio();
+  if (ptr || !$('opts').hidden) return;
+  ptr = { id: e.pointerId, x0: e.clientX, y0: e.clientY, x: e.clientX, y: e.clientY, startX: throwX, startY: throwY,
+    mode: state === 'aim' ? aimPhase : state === 'fly' ? 'steer' : null };
+  try { canvas.setPointerCapture(e.pointerId); } catch (err) {}
+  if (ptr.mode === 'steer') showStick();
+});
+canvas.addEventListener('pointermove', e => {
+  if (!ptr || e.pointerId !== ptr.id) return;
+  ptr.x = e.clientX; ptr.y = e.clientY;
+  if (ptr.mode === 'steer') updateSteer();
+  if (ptr.mode === 'place' && state === 'aim') {
+    throwX = Math.max(-LINE_X, Math.min(LINE_X, ptr.startX + (ptr.x - ptr.x0) / app.clientWidth * LINE_X * 2.4));
+    throwY = Math.max(LINE_Y_MIN, Math.min(LINE_Y_MAX, ptr.startY - (ptr.y - ptr.y0) / app.clientHeight * (LINE_Y_MAX - LINE_Y_MIN) * 1.6));
+  }
+});
+function endPtr(e) {
+  if (!ptr || e.pointerId !== ptr.id) return;
+  if (state === 'aim' && ptr.mode === 'place') toPull();
+  else if (state === 'aim' && ptr.mode === 'pull') {
+    const a = ptr.s || pullOf(ptr);
+    aimArrow.visible = false;
+    if (a.dy > 15 && a.power > .04) launch(a.power, a.yaw);
+    else { restPose(); toPull(); }
+  }
+  ptr = null; steerPtr.x = steerPtr.y = 0; ui.stick.hidden = true;
+}
+canvas.addEventListener('pointerup', endPtr);
+canvas.addEventListener('pointercancel', endPtr);
+
+function showStick() {
+  const r = app.getBoundingClientRect();
+  ui.stick.hidden = false; ui.stick.style.left = (ptr.x0 - r.left) + 'px'; ui.stick.style.top = (ptr.y0 - r.top) + 'px';
+  ui.knob.style.left = '0px'; ui.knob.style.top = '0px';
+}
+function updateSteer() {
+  let dx = (ptr.x - ptr.x0) / 60, dy = (ptr.y0 - ptr.y) / 60;
+  const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
+  steerPtr.x = dx; steerPtr.y = dy;
+  ui.knob.style.left = dx * 60 + 'px'; ui.knob.style.top = -dy * 60 + 'px';
+}
+const keyDown = {};
+addEventListener('keydown', e => { keyDown[e.key] = true; keySteer(); });
+addEventListener('keyup', e => { keyDown[e.key] = false; keySteer(); });
+function keySteer() {
+  steerKeys.x = (keyDown.ArrowRight || keyDown.d ? 1 : 0) - (keyDown.ArrowLeft || keyDown.a ? 1 : 0);
+  steerKeys.y = (keyDown.ArrowUp || keyDown.w ? 1 : 0) - (keyDown.ArrowDown || keyDown.s ? 1 : 0);
+}
+
+// ---------- 루프 ----------
+const camPos = AIM_CAM.clone(), camLook = new V3(0, 0, FACE_Z);
+let fov = 46, T = 0, last = performance.now();
+function resize() {
+  const w = app.clientWidth, h = app.clientHeight;
+  renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize);
+
+function frame(now) {
+  const rdt = Math.min(.05, (now - last) / 1000); last = now;
+  const portrait = camera.aspect < .8;
+  slow += ((settings.slow && dart && !dart.falling && dart.pos.z < FACE_Z + 5 ? .35 : 1) - slow) * Math.min(1, rdt * 12);
+  const dt = rdt * slow;
+  T += dt;
+
+  hand.x = Math.sin(T * .9) * 4; hand.y = .3 + Math.sin(T * .55) * 1.4;
+  hand.mesh.position.set(hand.x, hand.y, hand.z); hand.mesh.rotation.z = Math.sin(T * 1.8) * .12;
+  foam.forEach(f => f.m.position.set(Math.sin(T * f.sp + f.ph) * 3, f.y + Math.sin(T * 1.1 + f.ph) * .15, f.z));
+  balls.forEach(b => {
+    b.x += b.vx * dt; if (Math.abs(b.x) > 4) { b.vx = -b.vx; b.x = Math.sign(b.x) * 4; }
+    const ph = (T * b.sp + b.ph) % Math.PI, y = b.floor + Math.sin(ph) * b.h;
+    b.cool = Math.max(0, (b.cool || 0) - dt); b.squash = Math.max(0, (b.squash || 0) - dt);
+    const sq = ph < .25 || ph > Math.PI - .25 ? .25 : b.squash;
+    b.m.position.set(b.x, y, b.z); b.m.scale.set(1 + sq, 1 - sq, 1 + sq);
+  });
+  shades.x = Math.sin(T * .8) * 2.8; shades.mesh.position.set(shades.x, shades.y + Math.sin(T * 2.2) * .08, shades.z);
+  fan.blades.rotation.z += dt * 24; flowTex.offset.y -= fan.dir * dt * 1.4;
+  // 큰 비눗방울: 천천히 떠다니며 출렁. 터지면 잠깐 부풀었다 사라진다
+  if (bubble.popped) {
+    bubble.pop = Math.max(0, bubble.pop - dt);
+    bubble.g.scale.setScalar(1 + (.3 - bubble.pop) * 1.5); bubble.g.visible = bubble.pop > 0 && !!active.bubble;
+  } else {
+    const wob = Math.sin(T * 3 + bubble.ph) * .04;
+    bubble.g.position.set(bubble.x + Math.sin(T * .45 + bubble.ph) * 2.5, bubble.y + Math.sin(T * .8 + bubble.ph) * .8, bubble.z);
+    bubble.g.scale.set(1 + wob, 1 - wob, 1);
+  }
+  flies.forEach(f => {
+    if (f.knock > 0) {
+      f.knock -= dt; f.g.position.addScaledVector(f.kv, dt); f.g.rotation.z += dt * 10;
+      if (f.knock <= 0) { f.cx = (Math.random() - .5) * 5; f.cy = (Math.random() - .5) * 5; f.g.rotation.z = 0; }
+    } else {
+      f.g.position.set(f.cx + Math.sin(T * f.sp * 1.3 + f.ph) * 2.2, f.cy + Math.cos(T * f.sp * 1.9 + f.ph) * 1.3, f.z + Math.sin(T * f.sp + f.ph) * .8);
+    }
+    const flap = Math.sin(T * 60) * .8;
+    f.wings[0].rotation.y = flap; f.wings[1].rotation.y = -flap;
+  });
+  for (let i = 0; i < DUST; i++) {
+    dustPos[i * 3] += (wind.x * 1.6 + .2) * dt; dustPos[i * 3 + 1] += wind.y * dt; dustPos[i * 3 + 2] += 2 * dt;
+    if (dustPos[i * 3] > 12) dustPos[i * 3] -= 24; if (dustPos[i * 3] < -12) dustPos[i * 3] += 24;
+    if (dustPos[i * 3 + 2] > 7) dustPos[i * 3 + 2] -= 37;
+  }
+  dustGeo.attributes.position.needsUpdate = true;
+
+  // 손에 든 다트: 자리 고르는 중엔 좌우로 따라오고, 당기는 중엔 뒤로 물러나며 각도대로 기운다
+  if (state === 'aim' && held) {
+    if (ptr && ptr.mode === 'pull') {
+      const a = smoothPull(ptr, rdt);
+      held.position.set(throwX, throwY - a.power * .1, a.power * .7);
+      const dir = shotOf(a.power, a.yaw, held.position).normalize();
+      pointDart(held, dir);
+      // 세기 = 다트 앞 화살표의 길이와 색 (초록 → 노랑 → 빨강)
+      drawPowerArrow(a); aimArrow.visible = a.dy > 0;
+      setHint(a.dy > 0 ? `세기 ${Math.round(a.power * 100)}% · ${degText(a.yaw)}` : '아래로 당기세요');
+    } else {
+      held.position.x += (throwX - held.position.x) * Math.min(1, rdt * 18);
+      held.position.y += (throwY + Math.sin(T * 2) * .03 - held.position.y) * Math.min(1, rdt * 18);
+    }
+  }
+  if (state === 'fly' && dart) {
+    const n = Math.ceil(dt / .006);
+    for (let i = 0; i < n && state === 'fly' && dart; i++) stepDart(dt / n);
+  }
+  if (state === 'impact') {
+    timer -= rdt;
+    if (timer <= 0) { if (used.size >= PARTS.length) showResult(); else toAim(); }
+  }
+  // 꽂힌 다트 떨림
+  stuck.forEach(s => {
+    const age = T - s.hitT, a = age < 1.5 ? .22 * Math.exp(-age * 4) * Math.sin(age * 38) : 0;
+    s.dart.quaternion.copy(s.base); if (a) s.dart.rotateX(a);
+  });
+
+  // 카메라: 조준 = 던지는 자리, 비행 = 다트 뒤를 따라 반쯤 들어감, 꽂힘·결과 = 얼굴 정면
+  let tp, tl, tf, k;
+  if (state === 'fly' && dart && settings.follow) {
+    tp = new V3(dart.pos.x * .8, dart.pos.y + .8, Math.max(dart.pos.z + 5, FACE_Z + 11));
+    tl = new V3(dart.pos.x * .5, dart.pos.y * .5, FACE_Z);
+    tf = portrait ? 58 : 48; k = 1 - Math.exp(-rdt * 7);
+  } else if (state === 'impact' || state === 'result') {
+    tp = new V3(0, state === 'result' ? -1.5 : 0, FACE_Z + (portrait ? 17 : 14)); tl = new V3(0, state === 'result' ? -1.2 : 0, FACE_Z);
+    tf = portrait ? 58 : 48; k = 1 - Math.exp(-rdt * 4);
+  } else {
+    const dy = throwY - REST_Y;
+    tp = new V3(throwX * .75, AIM_CAM.y + dy * .75, AIM_CAM.z); tl = new V3(throwX * .3, dy * .3, FACE_Z); tf = portrait ? 50 : 42; k = 1 - Math.exp(-rdt * 5);
+  }
+  camPos.lerp(tp, k); camLook.lerp(tl, k); fov += (tf - fov) * k;
+  camera.fov = fov; camera.updateProjectionMatrix();
+  camera.position.copy(camPos);
+  if (shake > 0) { camera.position.x += (Math.random() - .5) * shake; camera.position.y += (Math.random() - .5) * shake; shake = Math.max(0, shake - rdt * 1.5); }
+  camera.lookAt(camLook);
+
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+
+resize(); newRound(); requestAnimationFrame(frame);
+})();
+</script>

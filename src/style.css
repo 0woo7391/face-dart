@@ -1,0 +1,122 @@
+/* 세로 한 화면: 3D 무대 위에 위(상태)·아래(부위 선택) HUD만 얹는다. 밤 놀이공원 다트 부스 느낌, 단일 다크 테마 */
+:root {
+  --night: #1b1530;
+  --dusk: #2a2147;
+  --panel: rgba(27, 21, 48, .86);
+  --ink: #f6efe4;
+  --muted: #a79fc4;
+  --pop: #ffcc3d;
+  --hit: #ff5d73;
+  --ok: #5fe0a8;
+  --display: 'Jua', 'Noto Sans KR', system-ui, sans-serif;
+  --body: 'Noto Sans KR', system-ui, sans-serif;
+  color-scheme: dark;
+}
+html, body { height: 100%; }
+[hidden] { display: none !important; }
+body {
+  background: var(--night); color: var(--ink); font-family: var(--body);
+  overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
+}
+#app {
+  position: relative; height: 100%; max-width: 520px; margin: 0 auto; overflow: hidden;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 0;
+}
+#c { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+button { font: inherit; color: inherit; cursor: pointer; }
+button:focus-visible { outline: 2px solid var(--pop); outline-offset: 2px; }
+
+.top {
+  position: relative; z-index: 2; display: flex; align-items: center; gap: 6px;
+  padding-top: 12px; pointer-events: none;
+}
+.top > * { pointer-events: auto; white-space: nowrap; }
+.round { font-family: var(--display); font-size: 20px; letter-spacing: .02em; }
+.round small { font-family: var(--body); font-size: 12px; color: var(--muted); margin-left: 6px; }
+@media (max-width: 420px) { .round small { display: none; } } /* 좁은 폰: 부위 이름은 아래 버튼에 이미 표시 */
+.wind {
+  margin-left: auto; display: flex; align-items: center; gap: 6px;
+  background: var(--panel); border-radius: 999px; padding: 5px 12px; font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.wind b { color: var(--pop); font-weight: 700; letter-spacing: -.1em; }
+.chip {
+  background: var(--panel); border: 1px solid rgba(167, 159, 196, .3); border-radius: 999px;
+  padding: 5px 9px; font-size: 13px;
+}
+.hint {
+  position: relative; z-index: 2; margin-top: 8px; text-align: center; font-size: 13px;
+  color: var(--muted); pointer-events: none; text-shadow: 0 1px 3px #000;
+}
+
+.parts {
+  position: absolute; z-index: 2; left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+}
+.part {
+  display: flex; align-items: center; gap: 8px; min-width: 0;
+  background: var(--panel); border: 2px solid transparent; border-radius: 12px; padding: 6px 8px;
+  font-size: 13px; text-align: left;
+}
+.part img { width: 34px; height: 26px; object-fit: contain; flex: none; }
+.part span { min-width: 0; display: flex; flex-direction: column; line-height: 1.2; }
+.part em { font-style: normal; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.part.sel { border-color: var(--pop); }
+.part.used { opacity: .45; }
+.part:disabled { cursor: default; }
+
+.obsline {
+  position: relative; z-index: 2; margin-top: 4px; text-align: center; font-size: 12px;
+  color: var(--pop); pointer-events: none; text-shadow: 0 1px 3px #000;
+}
+.parrow {
+  position: absolute; z-index: 2; width: 22px; margin-left: -11px; transform-origin: 50% 100%;
+  pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
+}
+.parrow::before {
+  content: ""; position: absolute; top: -14px; left: 0;
+  border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 16px solid currentColor;
+}
+.parrow i { display: block; width: 6px; height: 100%; margin: 0 auto; background: currentColor; border-radius: 3px; }
+.repos {
+  position: absolute; z-index: 2; left: 50%; transform: translateX(-50%);
+  top: 104px;
+}
+.stick { position: absolute; z-index: 3; pointer-events: none; }
+.stick .base { position: absolute; width: 120px; height: 120px; margin: -60px 0 0 -60px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, .35); }
+.stick .knob { position: absolute; width: 44px; height: 44px; margin: -22px 0 0 -22px; border-radius: 50%; background: rgba(255, 204, 61, .8); }
+
+.toast {
+  position: absolute; z-index: 3; left: 0; right: 0; top: 26%; text-align: center; pointer-events: none;
+  font-family: var(--display); font-size: 44px; text-shadow: 0 3px 0 rgba(0, 0, 0, .5);
+  transition: opacity .3s, transform .3s;
+}
+.toast small { display: block; font-family: var(--body); font-size: 14px; color: var(--ink); margin-top: 2px; text-shadow: 0 1px 3px #000; }
+.toast.out { opacity: 0; transform: translateY(-14px); }
+
+.sheet {
+  position: absolute; z-index: 4; left: max(16px, env(safe-area-inset-left, 0px));
+  right: max(16px, env(safe-area-inset-right, 0px));
+  bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  background: var(--panel); border: 1px solid rgba(167, 159, 196, .3); border-radius: 16px; padding: 16px;
+  display: flex; flex-direction: column; gap: 12px; backdrop-filter: blur(6px);
+}
+.sheet h2 { margin: 0; font-family: var(--display); font-weight: 400; font-size: 26px; text-wrap: balance; }
+.sheet h2 small { font-family: var(--body); font-size: 14px; color: var(--pop); margin-left: 8px; }
+.rows { display: grid; grid-template-columns: repeat(2, 1fr); gap: 4px 16px; font-size: 13px; }
+.rows div { display: flex; justify-content: space-between; gap: 8px; font-variant-numeric: tabular-nums; }
+.rows span { color: var(--muted); }
+.btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn { flex: 1; border: 0; border-radius: 10px; padding: 10px 14px; background: var(--dusk); }
+.btn.main { background: var(--pop); color: var(--night); font-weight: 700; }
+.opts { display: grid; gap: 10px; font-size: 14px; }
+.opts label { display: flex; align-items: center; gap: 10px; }
+.opts input[type=checkbox] { width: 18px; height: 18px; accent-color: var(--pop); }
+.opts input[type=range] { flex: 1; min-width: 0; accent-color: var(--pop); }
+.opts output { font-variant-numeric: tabular-nums; color: var(--pop); min-width: 2.5em; text-align: right; }
+.opts p { margin: 0; font-size: 12px; color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
