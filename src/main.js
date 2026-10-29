@@ -29,11 +29,13 @@ const settings = { wind: true, follow: true, slow: true };
 // ---------- 캔버스 그림 ----------
 function mk(w, h) { const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
 
-function sticker(w, h, paint, mirror) {
+// raw: 흰 테두리 없이 그림만 (결과 화면용). 크기·여백은 같다
+function sticker(w, h, paint, mirror, raw) {
   const pad = 16, art = mk(w, h), a = art.getContext('2d');
   if (mirror) { a.translate(w, 0); a.scale(-1, 1); }
   const X = u => pad + u * (w - 2 * pad), Y = v => pad + v * (h - 2 * pad);
   paint(a, X, Y, w - 2 * pad, h - 2 * pad);
+  if (raw) return art;
   const out = mk(w, h), o = out.getContext('2d');
   for (let i = 0; i < 20; i++) { const t = i / 20 * Math.PI * 2; o.drawImage(art, Math.cos(t) * 9, Math.sin(t) * 9); }
   o.globalCompositeOperation = 'source-in'; o.fillStyle = '#fff'; o.fillRect(0, 0, w, h);
@@ -95,7 +97,7 @@ const PAINT = {
   },
 };
 
-function partCanvas(p) { return sticker(256, Math.round(256 * p.h / p.w), PAINT[p.kind], p.mirror); }
+function partCanvas(p, raw) { return sticker(256, Math.round(256 * p.h / p.w), PAINT[p.kind], p.mirror, raw); }
 
 function faceTexture() {
   const c = mk(512, 640), x = c.getContext('2d');
@@ -268,11 +270,21 @@ function pickObstacles() {
 
 
 
-// p.canvas = 카드 그림. 사진 얼굴이면 applyFace가 바꾸고, p.def로 그림 카드에 되돌린다
-PARTS.forEach(p => { p.canvas = partCanvas(p); p.def = { ax: p.ax, ay: p.ay, w: p.w, h: p.h, canvas: p.canvas, off: null }; });
+// p.canvas = 카드 그림(흰 테두리), p.raw = 결과 화면용 테두리 없는 그림과 크기.
+// 사진 얼굴이면 applyFace가 바꾸고, p.def로 그림 카드에 되돌린다
+PARTS.forEach(p => {
+  p.canvas = partCanvas(p); p.raw = { canvas: partCanvas(p, true), w: p.w, h: p.h };
+  p.def = { ax: p.ax, ay: p.ay, w: p.w, h: p.h, canvas: p.canvas, raw: p.raw, off: null };
+});
 // 카드의 원점 = 앵커(채점 기준점). 사진 스티커는 앵커가 사각형 가운데가 아니라서 그만큼 옮긴다
 function partCard(p, opts) {
   const m = flat(p.w, p.h, tex(p.canvas), opts);
+  if (p.off) m.geometry.translate(-p.off.x, -p.off.y, 0);
+  return m;
+}
+// 결과 화면 카드: 흰 테두리 없이 부위만, 원점은 똑같이 앵커
+function resultCard(p) {
+  const m = flat(p.raw.w, p.raw.h, tex(p.raw.canvas));
   if (p.off) m.geometry.translate(-p.off.x, -p.off.y, 0);
   return m;
 }
@@ -400,7 +412,8 @@ function applyFace(f) {
     if (!s) Object.assign(p, p.def);
     else {
       const a = toWorld(s.anchor), c = outlined(s.canvas), k = s.rect.w * PHOTO_S / s.canvas.width;
-      Object.assign(p, { ax: a.x, ay: a.y, w: c.width * k, h: c.height * k, canvas: c, off: anchorOffset(s) });
+      Object.assign(p, { ax: a.x, ay: a.y, w: c.width * k, h: c.height * k, canvas: c, off: anchorOffset(s),
+        raw: { canvas: s.canvas, w: s.rect.w * PHOTO_S, h: s.rect.h * PHOTO_S } });
     }
     $('part-' + p.id).querySelector('img').src = p.canvas.toDataURL();
   });
@@ -622,19 +635,25 @@ function showResult() {
     const r = results[p.id];
     return `<div><span>${p.name}</span><b>${r.where === 'face' ? r.score + '점' : '0점 · ' + (r.note || NOTE[r.where])}</b></div>`;
   }).join('');
+  // 결과는 다트 꽂힌 모습이 아니라 부위가 놓인 얼굴 그림: 다트를 숨기고 카드를 테두리 없는 부위로 바꾼다
+  stuck.forEach(s => {
+    const m = resultCard(s.p);
+    m.position.copy(s.card.position); m.rotation.copy(s.card.rotation);
+    scene.remove(s.card); scene.add(m); s.card = m; s.dart.visible = false;
+  });
   ui.parts.hidden = true; $('result').hidden = false;
   setHint(''); sfx.done();
 }
 $('againBtn').addEventListener('click', newRound);
-// 원본 보기: 꽂은 다트를 잠시 치우고 원래 얼굴을 보여준다. 사진 얼굴은 원본 사진, 그림 얼굴은 정답 자리의 부위 카드
+// 원본 보기: 놓은 부위를 잠시 치우고 원래 얼굴을 보여준다. 사진 얼굴은 원본 사진, 그림 얼굴은 정답 자리의 부위
 let showingOrig = false;
 function showOriginal(on) {
   showingOrig = on;
-  stuck.forEach(s => { s.card.visible = s.dart.visible = !on; });
+  stuck.forEach(s => { s.card.visible = !on; });
   if (photoFace) face.material.map = on ? photoMaps.orig : photoMaps.empty;
   else {
     ghosts.forEach(g => scene.remove(g));
-    ghosts = on ? PARTS.map(p => { const g = partCard(p); g.position.set(p.ax, p.ay, FACE_Z - .02); scene.add(g); return g; }) : [];
+    ghosts = on ? PARTS.map(p => { const g = resultCard(p); g.position.set(p.ax, p.ay, FACE_Z - .02); scene.add(g); return g; }) : [];
   }
   $('ghostBtn').textContent = on ? '내 얼굴 보기' : '원본 보기';
 }
