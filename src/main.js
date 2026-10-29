@@ -5,8 +5,8 @@ import { loadFace, saveFace, clearFace } from './maker/store.js';
 import { PHOTO_S, toWorld, faceEllipse, anchorOffset } from './photo.js';
 
 const V3 = THREE.Vector3;
-// 실험판(비행): 레인 90, 중력 약하게. 다트판 시절 값은 FACE_Z -30, G 7
-const FACE_Z = -90, G = 1, LINE_X = 4.2;
+// 실험판(비행): 레인 110, 중력 약하게. 다트판 시절 값은 FACE_Z -30, G 7
+const FACE_Z = -110, G = 1, LINE_X = 4.2;
 const BOARD_R = 7.6;
 // 얼굴 판정 타원(중심·반지름)과 채점 정규화 길이. 사진 얼굴을 쓰면 applyFace가 바꾼다
 let FACE_CX = 0, FACE_CY = 0, FACE_RX = 4.4, FACE_RY = 5.6;
@@ -140,7 +140,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1b1530);
-scene.fog = new THREE.Fog(0x1b1530, 40, 160);
+scene.fog = new THREE.Fog(0x1b1530, 40, 180);
 const camera = new THREE.PerspectiveCamera(46, 1, .05, 200);
 
 const tex = c => { const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace; return t; };
@@ -158,9 +158,9 @@ face.position.set(0, 0, FACE_Z - .03); scene.add(face);
   const c = mk(256, 256), x = c.getContext('2d');
   x.fillStyle = '#1e1736'; x.fillRect(0, 0, 256, 256);
   x.strokeStyle = '#3a2f63'; x.lineWidth = 3; x.strokeRect(0, 0, 256, 256);
-  const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 30);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 120), new THREE.MeshBasicMaterial({ map: t }));
-  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -8, -42); scene.add(floor);
+  const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 35);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 140), new THREE.MeshBasicMaterial({ map: t }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -8, -52); scene.add(floor);
   const oche = new THREE.Mesh(new THREE.PlaneGeometry(10, .25), new THREE.MeshBasicMaterial({ color: 0xffcc3d }));
   oche.rotation.x = -Math.PI / 2; oche.position.set(0, -7.98, 0); scene.add(oche);
   const pts = [];
@@ -171,7 +171,7 @@ face.position.set(0, 0, FACE_Z - .03); scene.add(face);
 
 // 바람 가루
 const DUST = 200, dustPos = new Float32Array(DUST * 3);
-for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dustPos[i * 3 + 1] = (Math.random() - .5) * 16; dustPos[i * 3 + 2] = 6 - Math.random() * 96; }
+for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dustPos[i * 3 + 1] = (Math.random() - .5) * 16; dustPos[i * 3 + 2] = 6 - Math.random() * 116; }
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
 scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc9c2ff, size: .06, transparent: true, opacity: .5 })));
 
@@ -231,7 +231,7 @@ const fans = [0, 1].map(() => {
 
 const OBS = { hand: '손바닥', fly: '파리', fan: '선풍기' };
 const rnd = (a, b) => a + Math.random() * (b - a);
-const LANE_NEAR = -20, LANE_FAR = FACE_Z + 8; // 출발 직후(조준 화면을 가리지 않게)와 얼굴 바로 앞은 비워 둔다
+const LANE_NEAR = -20, LANE_FAR = FACE_Z + 25; // 출발 직후(조준 화면을 가리지 않게)와 얼굴 앞 25(마지막 조준 구간)는 비워 둔다
 function pickObstacles() {
   [...hands, ...flies, ...fans].forEach(o => { o.on = false; });
   const pool = { hand: [...hands], fly: [...flies], fan: [...fans] }, count = {};
@@ -567,8 +567,8 @@ function stepDart(dt) {
   d.jx += ((Math.random() * 2 - 1) * p.flutter * 2.5 - d.jx) * Math.min(1, dt * 3);
   d.jy += ((Math.random() * 2 - 1) * p.flutter * 1.5 - d.jy) * Math.min(1, dt * 3);
   // 활공: 조종은 세게, 손을 떼면 옆·위아래 속도가 서서히 줄어 멈춘다(관성 약간). 틀어도 앞으로 가는 속도는 그대로
-  d.vel.x += (wind.x * p.wind + sx * 24 * p.steer + d.jx - d.vel.x * 1.8) * dt;
-  d.vel.y += (-G + wind.y * p.wind + sy * 24 * p.steer + d.jy - d.vel.y * 1.8) * dt;
+  d.vel.x += (wind.x * p.wind + sx * 21 * p.steer + d.jx - d.vel.x * 1.8) * dt;
+  d.vel.y += (-G + wind.y * p.wind + sy * 21 * p.steer + d.jy - d.vel.y * 1.8) * dt;
   d.wobble = Math.min(2, d.wobble + s * dt * 1.4) * (1 - dt * .7);
   d.rot += d.spin * dt;
   d.roll = d.rot + Math.sin(d.t * (6 + p.flutter * 4)) * (.08 + d.wobble * .3) * p.flutter;
@@ -727,7 +727,7 @@ function frame(now) {
   for (let i = 0; i < DUST; i++) {
     dustPos[i * 3] += (wind.x * 1.6 + .2) * dt; dustPos[i * 3 + 1] += wind.y * dt; dustPos[i * 3 + 2] += 2 * dt;
     if (dustPos[i * 3] > 12) dustPos[i * 3] -= 24; if (dustPos[i * 3] < -12) dustPos[i * 3] += 24;
-    if (dustPos[i * 3 + 2] > 7) dustPos[i * 3 + 2] -= 97;
+    if (dustPos[i * 3 + 2] > 7) dustPos[i * 3 + 2] -= 117;
   }
   dustGeo.attributes.position.needsUpdate = true;
 
