@@ -337,7 +337,7 @@ const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
 const ui = { round: $('round'), wind: $('wind'), hint: $('hint'), obs: $('obs'), parts: $('parts'), stick: $('stick'), knob: $('knob'), toast: $('toast'),
-  repos: $('reposBtn') };
+  repos: $('reposBtn'), windflow: $('windflow') };
 PARTS.forEach(p => {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'part'; b.id = 'part-' + p.id;
@@ -428,7 +428,7 @@ function newWind() {
   // 세기 3단계(약·중·강)를 글자·막대 개수·색으로 함께 보여준다
   const a = Math.abs(wind.x), lv = a < .3 ? 0 : a < .8 ? 1 : a < 1.3 ? 2 : 3;
   const side = wind.x < 0 ? '왼쪽' : '오른쪽', word = ['', '약', '중', '강'][lv];
-  ui.wind.dataset.lv = lv;
+  ui.wind.dataset.lv = ui.windflow.dataset.lv = lv; ui.windflow.dataset.dir = wind.x < 0 ? 'l' : 'r';
   ui.wind.setAttribute('aria-label', lv ? `바람 ${side}으로 ${word}` : '바람 없음');
   ui.wind.innerHTML = lv === 0 ? '바람 없음' :
     `<b aria-hidden="true">${wind.x < 0 ? '←' : '→'}</b>${word}<i class="meter" aria-hidden="true"><span></span><span></span><span></span></i>`;
@@ -459,7 +459,7 @@ function toAim() {
   newWind(); pickObstacles(); select(next); toPlace();
 }
 function toPlace() {
-  aimPhase = 'place'; ui.repos.hidden = true;
+  aimPhase = 'place'; ui.repos.hidden = true; ui.windflow.hidden = ui.windflow.dataset.lv === '0';
   setHint('① 누른 채 끌어서 노릴 곳 앞에 다트를 두고 손을 떼세요');
 }
 function toPull() {
@@ -495,7 +495,7 @@ function launch() {
     p: current, mesh: held, pos: P, vel,
     rot: 0, spin: (Math.random() - .5) * .5 * current.flutter, wobble: 0, t: 0, jx: 0, jy: 0, roll: 0,
   };
-  held = null; state = 'fly'; ui.repos.hidden = true;
+  held = null; state = 'fly'; ui.repos.hidden = true; ui.windflow.hidden = true;
   refreshButtons(); sfx.throw(); buzz(15);
   setHint('누른 채 끌면 그쪽으로 날아가요. 장애물을 피해 얼굴까지!');
 }
