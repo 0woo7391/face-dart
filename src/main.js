@@ -355,7 +355,7 @@ function setHint(t) { ui.hint.textContent = t; }
 
 // ---------- 사진 얼굴 ----------
 const DEFAULT_FACE = { geo: face.geometry, map: face.material.map, rx: FACE_RX, ry: FACE_RY };
-let photoFace = null;
+let photoFace = null, photoMaps = null;
 
 // 판(동그란 다트판) 안에 들어가게 사진을 원으로 오린다
 function roundCrop(src) {
@@ -376,7 +376,8 @@ function applyFace(f) {
   photoFace = f;
   if (f) {
     face.geometry = new THREE.PlaneGeometry(PHOTO_S, PHOTO_S);
-    face.material.map = tex(roundCrop(f.empty));
+    photoMaps = { empty: tex(roundCrop(f.empty)), orig: tex(roundCrop(f.crop)) };
+    face.material.map = photoMaps.empty;
     ({ cx: FACE_CX, cy: FACE_CY, rx: FACE_RX, ry: FACE_RY } = faceEllipse(f.faceBox));
   } else {
     face.geometry = DEFAULT_FACE.geo; face.material.map = DEFAULT_FACE.map;
@@ -467,6 +468,7 @@ function toPull() {
 }
 ui.repos.addEventListener('click', () => { if (state === 'aim') toPlace(); });
 function newRound() {
+  if (showingOrig) showOriginal(false);
   if (dart) { scene.remove(dart.mesh); dart = null; } // 날아가는 중에 얼굴을 바꾼 경우
   stuck.forEach(s => { scene.remove(s.card); scene.remove(s.dart); }); stuck.length = 0;
   ghosts.forEach(g => scene.remove(g)); ghosts = [];
@@ -607,18 +609,23 @@ function showResult() {
     const r = results[p.id];
     return `<div><span>${p.name}</span><b>${r.where === 'face' ? r.score + '점' : '0점 · ' + (r.note || NOTE[r.where])}</b></div>`;
   }).join('');
-  ui.parts.hidden = true; $('result').hidden = false; $('ghostBtn').textContent = '정답 자리 보기';
+  ui.parts.hidden = true; $('result').hidden = false;
   setHint(''); sfx.done();
 }
 $('againBtn').addEventListener('click', newRound);
-$('ghostBtn').addEventListener('click', () => {
-  if (ghosts.length) { ghosts.forEach(g => scene.remove(g)); ghosts = []; $('ghostBtn').textContent = '정답 자리 보기'; return; }
-  ghosts = PARTS.map(p => {
-    const g = partCard(p, { opacity: .35, depthWrite: false });
-    g.position.set(p.ax, p.ay, FACE_Z - .02); scene.add(g); return g;
-  });
-  $('ghostBtn').textContent = '정답 자리 숨기기';
-});
+// 원본 보기: 꽂은 다트를 잠시 치우고 원래 얼굴을 보여준다. 사진 얼굴은 원본 사진, 그림 얼굴은 정답 자리의 부위 카드
+let showingOrig = false;
+function showOriginal(on) {
+  showingOrig = on;
+  stuck.forEach(s => { s.card.visible = s.dart.visible = !on; });
+  if (photoFace) face.material.map = on ? photoMaps.orig : photoMaps.empty;
+  else {
+    ghosts.forEach(g => scene.remove(g));
+    ghosts = on ? PARTS.map(p => { const g = partCard(p); g.position.set(p.ax, p.ay, FACE_Z - .02); scene.add(g); return g; }) : [];
+  }
+  $('ghostBtn').textContent = on ? '내 얼굴 보기' : '원본 보기';
+}
+$('ghostBtn').addEventListener('click', () => showOriginal(!showingOrig));
 
 // 설정·소리
 const optMap = { optWind: 'wind', optFollow: 'follow', optSlow: 'slow' };
