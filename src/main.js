@@ -189,11 +189,13 @@ const hands = [0, 1, 2].map(i => {
 const flies = [0, 1, 2, 3, 4, 5].map(i => {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x0c0a12 })));
+  // 어두운 배경에서도 보이게: 밝은 테두리(뒷면만 그린 조금 큰 구)
+  g.add(new THREE.Mesh(new THREE.SphereGeometry(.26, 12, 10), new THREE.MeshBasicMaterial({ color: 0xfff1c2, side: THREE.BackSide })));
   const eyeM = new THREE.MeshBasicMaterial({ color: 0xc0303a });
   [-1, 1].forEach(s => { const e = new THREE.Mesh(new THREE.SphereGeometry(.07, 8, 6), eyeM); e.position.set(s * .1, .08, .15); g.add(e); });
   const wingM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .55, side: THREE.DoubleSide });
-  const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(.38, .2), wingM); w.position.set(s * .22, .12, 0); g.add(w); return w; });
-  scene.add(g);
+  const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.CircleGeometry(.2, 16), wingM); w.scale.set(1, .55, 1); w.position.set(s * .24, .14, 0); g.add(w); return w; });
+  g.scale.setScalar(1.6); scene.add(g);
   return { g, wings, on: false, z: 0, cx: 0, cy: 0, ph: i * 2.1, sp: .8 + (i % 3) * .15, knock: 0, kv: new V3() };
 });
 
@@ -229,7 +231,7 @@ const fans = [0, 1].map(() => {
 
 const OBS = { hand: '손바닥', fly: '파리', fan: '선풍기' };
 const rnd = (a, b) => a + Math.random() * (b - a);
-const LANE_NEAR = -12, LANE_FAR = FACE_Z + 8; // 출발 직후와 얼굴 바로 앞은 비워 둔다
+const LANE_NEAR = -20, LANE_FAR = FACE_Z + 8; // 출발 직후(조준 화면을 가리지 않게)와 얼굴 바로 앞은 비워 둔다
 function pickObstacles() {
   [...hands, ...flies, ...fans].forEach(o => { o.on = false; });
   const pool = { hand: [...hands], fly: [...flies], fan: [...fans] }, count = {};
@@ -255,17 +257,6 @@ function pickObstacles() {
 }
 
 
-// 세기 화살표: 화면 위 다트 촉에서 위로 뻗는다. 길이·색 = 세기, 기울기 = 좌우 각도 (과녁까지 닿지 않음)
-const aimArrow = { set visible(v) { ui.parrow.hidden = !v; } };
-const tipScreen = new V3();
-function drawPowerArrow(a) {
-  tipScreen.copy(held.position).project(camera);
-  const r = app.getBoundingClientRect(), x = (tipScreen.x + 1) / 2 * r.width, y = (1 - tipScreen.y) / 2 * r.height;
-  const len = 34 + a.power * 120, el = ui.parrow;
-  el.style.left = x + 'px'; el.style.top = (y - len) + 'px'; el.style.height = len + 'px';
-  el.style.transform = `rotate(${a.yaw * 180 / Math.PI * 3}deg)`;
-  el.style.color = `hsl(${120 - a.power * 120}, 85%, 58%)`;
-}
 
 // p.canvas = 카드 그림. 사진 얼굴이면 applyFace가 바꾸고, p.def로 그림 카드에 되돌린다
 PARTS.forEach(p => { p.canvas = partCanvas(p); p.def = { ax: p.ax, ay: p.ay, w: p.w, h: p.h, canvas: p.canvas, off: null }; });
@@ -346,7 +337,7 @@ const buzz = ms => { try { navigator.vibrate && navigator.vibrate(ms); } catch (
 // ---------- UI ----------
 const $ = id => document.getElementById(id);
 const ui = { round: $('round'), wind: $('wind'), hint: $('hint'), obs: $('obs'), parts: $('parts'), stick: $('stick'), knob: $('knob'), toast: $('toast'),
-  repos: $('reposBtn'), parrow: $('parrow'), tilt: $('tilt') };
+  repos: $('reposBtn') };
 PARTS.forEach(p => {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'part'; b.id = 'part-' + p.id;
@@ -428,22 +419,18 @@ let ghosts = [];
 const REST_Y = -.9, LINE_Y_MIN = -4, LINE_Y_MAX = 3.6;
 let aimPhase = 'place', throwX = 0, throwY = REST_Y;
 const MAX_PULL = () => Math.min(app.clientHeight * .3, 230);
-// tilt = 위아래 기울기(도, 위가 +). 오른쪽 슬라이더로 정한다
-let tilt = 0;
-const tiltTan = () => Math.tan(tilt * Math.PI / 180);
-function restPose() { held.position.set(throwX, throwY, 0); pointDart(held, new V3(0, .1 + tiltTan(), -1)); }
-const tiltText = () => (tilt === 0 ? '수평' : `${tilt > 0 ? '위' : '아래'} ${Math.abs(tilt)}°`);
-$('tiltIn').addEventListener('input', e => {
-  tilt = +e.target.value; $('tiltOut').textContent = `${tilt}°`;
-  if (state === 'aim' && held && !ptr) restPose();
-});
+function restPose() { held.position.set(throwX, throwY, 0); pointDart(held, new V3(0, .1, -1)); }
 
 function newWind() {
   wind.x = settings.wind ? (Math.random() * 2 - 1) * 1.8 : 0;
   wind.y = 0; // 위아래는 선풍기 담당
-  const a = Math.abs(wind.x);
-  ui.wind.innerHTML = a < .4 ? '바람 없음' :
-    `바람 <b>${(wind.x < 0 ? '◀' : '▶').repeat(a < 1.2 ? 1 : a < 2 ? 2 : 3)}</b> ${a.toFixed(1)}`;
+  // 세기 3단계(약·중·강)를 글자·막대 개수·색으로 함께 보여준다
+  const a = Math.abs(wind.x), lv = a < .3 ? 0 : a < .8 ? 1 : a < 1.3 ? 2 : 3;
+  const side = wind.x < 0 ? '왼쪽' : '오른쪽', word = ['', '약', '중', '강'][lv];
+  ui.wind.dataset.lv = lv;
+  ui.wind.setAttribute('aria-label', lv ? `바람 ${side}으로 ${word}` : '바람 없음');
+  ui.wind.innerHTML = lv === 0 ? '바람 없음' :
+    `<b aria-hidden="true">${wind.x < 0 ? '←' : '→'}</b>${word}<i class="meter" aria-hidden="true"><span></span><span></span><span></span></i>`;
 }
 function refreshButtons() {
   PARTS.forEach(p => {
@@ -471,12 +458,12 @@ function toAim() {
   newWind(); pickObstacles(); select(next); toPlace();
 }
 function toPlace() {
-  aimPhase = 'place'; ui.repos.hidden = true; ui.tilt.hidden = false;
+  aimPhase = 'place'; ui.repos.hidden = true;
   setHint('① 누른 채 끌어서 노릴 곳 앞에 다트를 두고 손을 떼세요');
 }
 function toPull() {
   aimPhase = 'pull'; ui.repos.hidden = false;
-  setHint('② 아래로 당겼다 놓기. 당긴 길이 = 세기, 당긴 방향 = 좌우 각도');
+  setHint('② 아래로 당겼다 놓으면 출발');
 }
 ui.repos.addEventListener('click', () => { if (state === 'aim') toPlace(); });
 function newRound() {
@@ -489,38 +476,24 @@ function newRound() {
   current = PARTS[0]; toAim();
 }
 
-// 거의 똑바로 당기면 정면(0°)으로 붙고, 30px 넘게 당기기 전엔 각도를 읽지 않는다(누르는 순간의 흔들림 무시)
+// 당긴 길이(0~1). 지금은 출발 신호와 당기는 모습에만 쓴다
 function pullOf(p) {
-  const dx = p.x - p.x0, dy = p.y - p.y0, L = MAX_PULL(), len = Math.hypot(dx, dy);
-  const power = dy > 0 ? Math.min(1, len / L) : 0;
-  let ang = Math.max(-.6, Math.min(.6, Math.atan2(-dx, Math.max(dy, 1))));
-  ang = Math.abs(ang) < .07 ? 0 : ang - Math.sign(ang) * .07;
-  return { power, yaw: ang * .3, dy, ok: len > 30 };
+  const dy = p.y - p.y0;
+  return { power: Math.max(0, Math.min(1, dy / MAX_PULL())), dy };
 }
-// 화면에 보이는 값 = 놓을 때 쓰는 값. 살짝 늦게 따라와서 손을 떼는 순간의 미끄러짐은 반영되지 않는다
-function smoothPull(p, rdt) {
-  const a = pullOf(p), k = 1 - Math.exp(-rdt * 12);
-  if (!p.s) p.s = { power: a.power, yaw: 0 };
-  p.s.power += (a.power - p.s.power) * k;
-  if (a.ok) p.s.yaw += (a.yaw - p.s.yaw) * k;
-  p.s.dy = a.dy;
-  return p.s;
-}
-const degText = yaw => { const d = Math.round(Math.abs(yaw) * 180 / Math.PI); return d === 0 ? '정면' : `${yaw > 0 ? '오른쪽' : '왼쪽'} ${d}°`; };
-// 다트는 놓인 자리 바로 앞(같은 높이·좌우)을 노린다.
+// 다트는 놓인 자리 바로 앞으로 곧게 출발한다. 방향 바꾸기는 비행 중 조종이 맡는다
 // shortcut: 실험판(비행)이라 세기는 무시하고 앞으로 가는 속도는 일정(약 5초 비행), 재밌으면 출발 조작을 다시 정한다
-function shotOf(power, yaw, P) {
-  const D = P.z - FACE_Z, vz = 18, t = D / vz;
-  const h = P.y;
-  return new V3(Math.sin(yaw) * vz, (h - P.y + G * t * t / 2) / t + tiltTan() * vz, -Math.cos(yaw) * vz);
+function shotOf(P) {
+  const vz = 18, t = (P.z - FACE_Z) / vz;
+  return new V3(0, G * t / 2, -vz); // 중력만큼 살짝 위로 쏴서 같은 높이에 닿게
 }
-function launch(power, yaw) {
-  const P = held.position.clone(), vel = shotOf(power, yaw, P);
+function launch() {
+  const P = held.position.clone(), vel = shotOf(P);
   dart = {
     p: current, mesh: held, pos: P, vel,
     rot: 0, spin: (Math.random() - .5) * .5 * current.flutter, wobble: 0, t: 0, jx: 0, jy: 0, roll: 0,
   };
-  held = null; state = 'fly'; ui.repos.hidden = true; ui.tilt.hidden = true; aimArrow.visible = false;
+  held = null; state = 'fly'; ui.repos.hidden = true;
   refreshButtons(); sfx.throw(); buzz(15);
   setHint('누른 채 끌면 그쪽으로 날아가요. 장애물을 피해 얼굴까지!');
 }
@@ -592,8 +565,8 @@ function stepDart(dt) {
   d.jx += ((Math.random() * 2 - 1) * p.flutter * 2.5 - d.jx) * Math.min(1, dt * 3);
   d.jy += ((Math.random() * 2 - 1) * p.flutter * 1.5 - d.jy) * Math.min(1, dt * 3);
   // 활공: 조종은 세게, 손을 떼면 옆·위아래 속도가 서서히 줄어 멈춘다(관성 약간). 틀어도 앞으로 가는 속도는 그대로
-  d.vel.x += (wind.x * p.wind + sx * 14 * p.steer + d.jx - d.vel.x * 1.2) * dt;
-  d.vel.y += (-G + wind.y * p.wind + sy * 14 * p.steer + d.jy - d.vel.y * 1.2) * dt;
+  d.vel.x += (wind.x * p.wind + sx * 24 * p.steer + d.jx - d.vel.x * 1.8) * dt;
+  d.vel.y += (-G + wind.y * p.wind + sy * 24 * p.steer + d.jy - d.vel.y * 1.8) * dt;
   d.wobble = Math.min(2, d.wobble + s * dt * 1.4) * (1 - dt * .7);
   d.rot += d.spin * dt;
   d.roll = d.rot + Math.sin(d.t * (6 + p.flutter * 4)) * (.08 + d.wobble * .3) * p.flutter;
@@ -615,7 +588,7 @@ function stepDart(dt) {
   });
   flies.forEach(f => {
     if (!f.on || f.knock > 0) return;
-    if (f.g.position.distanceTo(d.pos) < p.r * .8 + .3) {
+    if (f.g.position.distanceTo(d.pos) < p.r * .8 + .48) {
       const side = d.pos.x >= f.g.position.x ? 1 : -1;
       d.vel.x += side * (2.5 + Math.random() * 2.5); d.vel.y += (Math.random() - .5) * 3; d.vel.z *= .85; d.spin += (Math.random() - .5) * 6;
       f.knock = 2; f.kv.set(-side * 6, 3, 4); sfx.fly(); buzz(25);
@@ -681,9 +654,8 @@ function endPtr(e) {
   if (!ptr || e.pointerId !== ptr.id) return;
   if (state === 'aim' && ptr.mode === 'place') toPull();
   else if (state === 'aim' && ptr.mode === 'pull') {
-    const a = ptr.s || pullOf(ptr);
-    aimArrow.visible = false;
-    if (a.dy > 15 && a.power > .04) launch(a.power, a.yaw);
+    const a = pullOf(ptr);
+    if (a.dy > 15 && a.power > .04) launch();
     else { restPose(); toPull(); }
   }
   ptr = null; steerPtr.x = steerPtr.y = 0; ui.stick.hidden = true;
@@ -697,7 +669,7 @@ function showStick() {
   ui.knob.style.left = '0px'; ui.knob.style.top = '0px';
 }
 function updateSteer() {
-  let dx = (ptr.x - ptr.x0) / 60, dy = (ptr.y0 - ptr.y) / 60;
+  let dx = (ptr.x - ptr.x0) / 40, dy = (ptr.y0 - ptr.y) / 40;
   const l = Math.hypot(dx, dy); if (l > 1) { dx /= l; dy /= l; }
   steerPtr.x = dx; steerPtr.y = dy;
   ui.knob.style.left = dx * 60 + 'px'; ui.knob.style.top = -dy * 60 + 'px';
@@ -752,16 +724,12 @@ function frame(now) {
   }
   dustGeo.attributes.position.needsUpdate = true;
 
-  // 손에 든 다트: 자리 고르는 중엔 좌우로 따라오고, 당기는 중엔 뒤로 물러나며 각도대로 기운다
+  // 손에 든 다트: 자리 고르는 중엔 따라오고, 당기는 중엔 뒤로 물러난다
   if (state === 'aim' && held) {
     if (ptr && ptr.mode === 'pull') {
-      const a = smoothPull(ptr, rdt);
+      const a = pullOf(ptr);
       held.position.set(throwX, throwY - a.power * .1, a.power * .7);
-      const dir = shotOf(a.power, a.yaw, held.position).normalize();
-      pointDart(held, dir);
-      // 세기 = 다트 앞 화살표의 길이와 색 (초록 → 노랑 → 빨강)
-      drawPowerArrow(a); aimArrow.visible = a.dy > 0;
-      setHint(a.dy > 0 ? `세기 ${Math.round(a.power * 100)}% · ${degText(a.yaw)} · ${tiltText()}` : '아래로 당기세요');
+      setHint(a.dy > 15 ? '놓으면 출발!' : '아래로 당기세요');
     } else {
       held.position.x += (throwX - held.position.x) * Math.min(1, rdt * 18);
       held.position.y += (throwY + Math.sin(T * 2) * .03 - held.position.y) * Math.min(1, rdt * 18);

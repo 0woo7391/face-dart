@@ -41,7 +41,15 @@ button:focus-visible { outline: 2px solid var(--pop); outline-offset: 2px; }
   background: var(--panel); border-radius: 999px; padding: 5px 12px; font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
-.wind b { color: var(--pop); font-weight: 700; letter-spacing: -.1em; }
+.wind[data-lv="1"] { --lv: var(--ok); }
+.wind[data-lv="2"] { --lv: var(--pop); }
+.wind[data-lv="3"] { --lv: var(--hit); }
+.wind b { color: var(--lv); font-size: 18px; line-height: 1; }
+.wind .meter { display: flex; gap: 2px; }
+.wind .meter span { width: 5px; height: 12px; border-radius: 2px; background: rgba(255, 255, 255, .18); }
+.wind[data-lv="1"] .meter span:nth-child(-n+1),
+.wind[data-lv="2"] .meter span:nth-child(-n+2),
+.wind[data-lv="3"] .meter span { background: var(--lv); }
 .chip {
   background: var(--panel); border: 1px solid rgba(167, 159, 196, .3); border-radius: 999px;
   padding: 5px 9px; font-size: 13px;
@@ -73,23 +81,6 @@ button:focus-visible { outline: 2px solid var(--pop); outline-offset: 2px; }
   position: relative; z-index: 2; margin-top: 4px; text-align: center; font-size: 12px;
   color: var(--pop); pointer-events: none; text-shadow: 0 1px 3px #000;
 }
-.parrow {
-  position: absolute; z-index: 2; width: 22px; margin-left: -11px; transform-origin: 50% 100%;
-  pointer-events: none; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .6));
-}
-.parrow::before {
-  content: ""; position: absolute; top: -14px; left: 0;
-  border-left: 11px solid transparent; border-right: 11px solid transparent; border-bottom: 16px solid currentColor;
-}
-.parrow i { display: block; width: 6px; height: 100%; margin: 0 auto; background: currentColor; border-radius: 3px; }
-/* 위아래 기울기: 조준하는 동안 오른쪽 가장자리. 엄지로 위아래로 민다 */
-.tilt {
-  position: absolute; z-index: 2; right: max(12px, env(safe-area-inset-right, 0px)); top: 30%; height: 36%; width: 48px;
-  display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 0;
-  background: var(--panel); border-radius: 24px; font-size: 12px; color: var(--muted);
-}
-.tilt input { writing-mode: vertical-lr; direction: rtl; flex: 1; width: 32px; min-height: 0; accent-color: var(--pop); }
-.tilt output { color: var(--pop); font-variant-numeric: tabular-nums; }
 .repos {
   position: absolute; z-index: 2; left: 50%; transform: translateX(-50%);
   top: 104px;
