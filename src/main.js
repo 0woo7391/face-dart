@@ -5,7 +5,8 @@ import { loadFace, saveFace, clearFace } from './maker/store.js';
 import { PHOTO_S, toWorld, faceEllipse, anchorOffset } from './photo.js';
 
 const V3 = THREE.Vector3;
-const FACE_Z = -30, G = 7, LINE_X = 4.2;
+// 실험판(비행): 레인 90, 중력 약하게. 다트판 시절 값은 FACE_Z -30, G 7
+const FACE_Z = -90, G = 1, LINE_X = 4.2;
 const BOARD_R = 7.6;
 // 얼굴 판정 타원(중심·반지름)과 채점 정규화 길이. 사진 얼굴을 쓰면 applyFace가 바꾼다
 let FACE_CX = 0, FACE_CY = 0, FACE_RX = 4.4, FACE_RY = 5.6;
@@ -139,7 +140,7 @@ const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1b1530);
-scene.fog = new THREE.Fog(0x1b1530, 30, 75);
+scene.fog = new THREE.Fog(0x1b1530, 40, 160);
 const camera = new THREE.PerspectiveCamera(46, 1, .05, 200);
 
 const tex = c => { const t = new THREE.CanvasTexture(c); t.anisotropy = 4; t.colorSpace = THREE.SRGBColorSpace; return t; };
@@ -157,9 +158,9 @@ face.position.set(0, 0, FACE_Z - .03); scene.add(face);
   const c = mk(256, 256), x = c.getContext('2d');
   x.fillStyle = '#1e1736'; x.fillRect(0, 0, 256, 256);
   x.strokeStyle = '#3a2f63'; x.lineWidth = 3; x.strokeRect(0, 0, 256, 256);
-  const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 12);
-  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 48), new THREE.MeshBasicMaterial({ map: t }));
-  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -8, -14); scene.add(floor);
+  const t = tex(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(10, 30);
+  const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, 120), new THREE.MeshBasicMaterial({ map: t }));
+  floor.rotation.x = -Math.PI / 2; floor.position.set(0, -8, -42); scene.add(floor);
   const oche = new THREE.Mesh(new THREE.PlaneGeometry(10, .25), new THREE.MeshBasicMaterial({ color: 0xffcc3d }));
   oche.rotation.x = -Math.PI / 2; oche.position.set(0, -7.98, 0); scene.add(oche);
   const pts = [];
@@ -170,16 +171,22 @@ face.position.set(0, 0, FACE_Z - .03); scene.add(face);
 
 // 바람 가루
 const DUST = 200, dustPos = new Float32Array(DUST * 3);
-for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dustPos[i * 3 + 1] = (Math.random() - .5) * 16; dustPos[i * 3 + 2] = 6 - Math.random() * 36; }
+for (let i = 0; i < DUST; i++) { dustPos[i * 3] = (Math.random() - .5) * 24; dustPos[i * 3 + 1] = (Math.random() - .5) * 16; dustPos[i * 3 + 2] = 6 - Math.random() * 96; }
 const dustGeo = new THREE.BufferGeometry(); dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
 scene.add(new THREE.Points(dustGeo, new THREE.PointsMaterial({ color: 0xc9c2ff, size: .06, transparent: true, opacity: .5 })));
 
-// 장애물: 손바닥 (막기). 던질 때마다 거리(z)·중심·오가는 방향(좌우/위아래)을 새로 뽑는다
-const hand = { mesh: flat(3.2, 4.0, tex(sticker(256, 320, PAINT.hand))), x: 0, y: 0, z: -17, cx: 0, cy: 0, axis: 'x' };
-scene.add(hand.mesh);
+// 장애물은 미리 만들어 두고(손바닥 3, 파리 6, 선풍기 2), 던질 때마다 6~8개를 골라 레인을 따라 깐다.
+// 각자 거리(z)·중심(x, y)·움직임을 매번 새로 뽑는다
+
+// 장애물: 손바닥 (막기). 좌우 또는 위아래로 오간다
+const HAND_TEX = tex(sticker(256, 320, PAINT.hand));
+const hands = [0, 1, 2].map(i => {
+  const mesh = flat(3.2, 4.0, HAND_TEX); scene.add(mesh);
+  return { mesh, on: false, x: 0, y: 0, z: 0, cx: 0, cy: 0, axis: 'x', ph: i * 1.7 };
+});
 
 // 장애물: 파리 (튕기기). 각자 중심을 두고 8자 경로를 돈다. 경로가 일정해서 보고 피할 수 있다
-const flies = [0, 1, 2].map(i => {
+const flies = [0, 1, 2, 3, 4, 5].map(i => {
   const g = new THREE.Group();
   g.add(new THREE.Mesh(new THREE.SphereGeometry(.2, 12, 10), new THREE.MeshBasicMaterial({ color: 0x0c0a12 })));
   const eyeM = new THREE.MeshBasicMaterial({ color: 0xc0303a });
@@ -187,25 +194,10 @@ const flies = [0, 1, 2].map(i => {
   const wingM = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: .55, side: THREE.DoubleSide });
   const wings = [-1, 1].map(s => { const w = new THREE.Mesh(new THREE.PlaneGeometry(.38, .2), wingM); w.position.set(s * .22, .12, 0); g.add(w); return w; });
   scene.add(g);
-  return { g, wings, on: false, z: -15, cx: 0, cy: 0, ph: i * 2.1, sp: .8 + i * .15, knock: 0, kv: new V3() };
+  return { g, wings, on: false, z: 0, cx: 0, cy: 0, ph: i * 2.1, sp: .8 + (i % 3) * .15, knock: 0, kv: new V3() };
 });
 
 // 장애물: 선풍기 (바람은 좌우를 맡으니, 선풍기는 아래나 위에서 불어 다트를 위아래로 민다)
-const fan = { g: new THREE.Group(), blades: new THREE.Group(), dir: 1, z: -11, zone: 2.5 };
-{
-  fan.g.add(new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x8fa6cf })));
-  const bm = new THREE.MeshBasicMaterial({ color: 0xeef4ff, side: THREE.DoubleSide });
-  for (let i = 0; i < 3; i++) {
-    const h = new THREE.Group(), b = new THREE.Mesh(new THREE.PlaneGeometry(.42, .95), bm);
-    b.position.set(0, .5, .02); h.rotation.z = i * Math.PI * 2 / 3; h.add(b); fan.blades.add(h);
-  }
-  fan.g.add(fan.blades);
-  const ring = new THREE.Mesh(new THREE.RingGeometry(1.08, 1.2, 32), new THREE.MeshBasicMaterial({ color: 0x4a5878, side: THREE.DoubleSide }));
-  ring.position.z = .03; fan.g.add(ring);
-  fan.g.scale.setScalar(.95);
-  scene.add(fan.g);
-}
-// 세로 바람 줄무늬
 const flowCanvas = mk(128, 256);
 {
   const x = flowCanvas.getContext('2d');
@@ -215,40 +207,53 @@ const flowCanvas = mk(128, 256);
     x.lineWidth = 1 + Math.random() * 2; x.beginPath(); x.moveTo(x0, y0); x.lineTo(x0, y0 + l); x.stroke();
   }
 }
-const flowTex = tex(flowCanvas); flowTex.wrapT = THREE.RepeatWrapping;
-const fanFlow = new THREE.Mesh(new THREE.PlaneGeometry(6, 12), new THREE.MeshBasicMaterial({ map: flowTex, transparent: true, opacity: .28, depthWrite: false }));
-scene.add(fanFlow);
-
-// 이번 던지기의 장애물: 셋 중 1~2개. 거리(z)·좌우(x)·위아래(y)를 매번 새로 뽑는다
-const OBS = { hand: '손바닥', fly: '파리', fan: '선풍기' };
-let active = {};
-const rnd = (a, b) => a + Math.random() * (b - a);
-function pickObstacles() {
-  const keys = Object.keys(OBS).sort(() => Math.random() - .5).slice(0, Math.random() < .5 ? 1 : 2);
-  active = {}; keys.forEach(k => { active[k] = true; });
-  // z는 서로 4 이상 떨어지게 (한 지점에 몰리지 않게). 20번 안에 못 찾으면 마지막 값을 쓴다
-  const taken = [];
-  const placeZ = (lo, hi) => {
-    let z = rnd(lo, hi);
-    for (let i = 0; i < 20 && taken.some(t => Math.abs(t - z) < 4); i++) z = rnd(lo, hi);
-    taken.push(z); return z;
-  };
-  if (active.hand) { hand.z = placeZ(-22, -12); hand.cx = rnd(-2.5, 2.5); hand.cy = rnd(-2, 2); hand.axis = Math.random() < .5 ? 'x' : 'y'; }
-  if (active.fan) {
-    // dir 1 = 아래에서 위로, -1 = 위에서 아래로. 카메라 쪽으로 살짝 기울여 날개가 보이게
-    fan.z = placeZ(-22, -9); fan.dir = Math.random() < .5 ? -1 : 1;
-    fan.g.position.set(rnd(-1.5, 1.5), -fan.dir * 6.6, fan.z); fan.g.rotation.set(-fan.dir * (Math.PI / 2 - .55), 0, 0);
-    fanFlow.position.set(fan.g.position.x, 0, fan.z);
+const fans = [0, 1].map(() => {
+  const g = new THREE.Group(), blades = new THREE.Group();
+  g.add(new THREE.Mesh(new THREE.CircleGeometry(1.1, 32), new THREE.MeshBasicMaterial({ color: 0x8fa6cf })));
+  const bm = new THREE.MeshBasicMaterial({ color: 0xeef4ff, side: THREE.DoubleSide });
+  for (let i = 0; i < 3; i++) {
+    const h = new THREE.Group(), b = new THREE.Mesh(new THREE.PlaneGeometry(.42, .95), bm);
+    b.position.set(0, .5, .02); h.rotation.z = i * Math.PI * 2 / 3; h.add(b); blades.add(h);
   }
-  const nFly = Math.random() < .5 ? 2 : 3;
-  flies.forEach((f, i) => {
-    f.on = !!active.fly && i < nFly;
-    if (f.on) { f.z = placeZ(-26, -8); f.cx = rnd(-3, 3); f.cy = rnd(-2.5, 2.5); f.knock = 0; f.g.rotation.z = 0; }
-  });
-  hand.mesh.visible = !!active.hand; flies.forEach(f => { f.g.visible = f.on; });
-  fan.g.visible = fanFlow.visible = !!active.fan;
-  ui.obs.textContent = '장애물: ' + keys.map(k => OBS[k]).join(' · ');
+  g.add(blades);
+  const ring = new THREE.Mesh(new THREE.RingGeometry(1.08, 1.2, 32), new THREE.MeshBasicMaterial({ color: 0x4a5878, side: THREE.DoubleSide }));
+  ring.position.z = .03; g.add(ring);
+  g.scale.setScalar(.95);
+  scene.add(g);
+  // 세로 바람 줄무늬 (선풍기마다 방향이 달라서 텍스처도 따로)
+  const flowTex = tex(flowCanvas); flowTex.wrapT = THREE.RepeatWrapping;
+  const flow = new THREE.Mesh(new THREE.PlaneGeometry(6, 12), new THREE.MeshBasicMaterial({ map: flowTex, transparent: true, opacity: .28, depthWrite: false }));
+  scene.add(flow);
+  return { g, blades, flow, flowTex, on: false, dir: 1, z: 0, zone: 2.5 };
+});
+
+const OBS = { hand: '손바닥', fly: '파리', fan: '선풍기' };
+const rnd = (a, b) => a + Math.random() * (b - a);
+const LANE_NEAR = -12, LANE_FAR = FACE_Z + 8; // 출발 직후와 얼굴 바로 앞은 비워 둔다
+function pickObstacles() {
+  [...hands, ...flies, ...fans].forEach(o => { o.on = false; });
+  const pool = { hand: [...hands], fly: [...flies], fan: [...fans] }, count = {};
+  // n칸으로 나눈 레인에 한 칸에 하나씩. 칸 안에서 z를 흔들어 일정 간격처럼 보이지 않게
+  const n = 6 + Math.floor(Math.random() * 3), gap = (LANE_NEAR - LANE_FAR) / n;
+  for (let i = 0; i < n; i++) {
+    const types = Object.keys(pool).filter(k => pool[k].length);
+    const k = types[Math.floor(Math.random() * types.length)], o = pool[k].pop();
+    o.on = true; o.z = LANE_NEAR - gap * (i + .2 + Math.random() * .6);
+    count[k] = (count[k] || 0) + 1;
+    if (k === 'hand') { o.cx = rnd(-2.5, 2.5); o.cy = rnd(-2, 2); o.axis = Math.random() < .5 ? 'x' : 'y'; }
+    if (k === 'fly') { o.cx = rnd(-3, 3); o.cy = rnd(-2.5, 2.5); o.knock = 0; o.g.rotation.z = 0; }
+    if (k === 'fan') {
+      // dir 1 = 아래에서 위로, -1 = 위에서 아래로. 카메라 쪽으로 살짝 기울여 날개가 보이게
+      o.dir = Math.random() < .5 ? -1 : 1;
+      o.g.position.set(rnd(-1.5, 1.5), -o.dir * 6.6, o.z); o.g.rotation.set(-o.dir * (Math.PI / 2 - .55), 0, 0);
+      o.flow.position.set(o.g.position.x, 0, o.z);
+    }
+  }
+  hands.forEach(h => { h.mesh.visible = h.on; }); flies.forEach(f => { f.g.visible = f.on; });
+  fans.forEach(f => { f.g.visible = f.flow.visible = f.on; });
+  ui.obs.textContent = '장애물: ' + Object.keys(count).map(k => `${OBS[k]} ${count[k]}`).join(' · ');
 }
+
 
 // 세기 화살표: 화면 위 다트 촉에서 위로 뻗는다. 길이·색 = 세기, 기울기 = 좌우 각도 (과녁까지 닿지 않음)
 const aimArrow = { set visible(v) { ui.parrow.hidden = !v; } };
@@ -502,11 +507,11 @@ function smoothPull(p, rdt) {
   return p.s;
 }
 const degText = yaw => { const d = Math.round(Math.abs(yaw) * 180 / Math.PI); return d === 0 ? '정면' : `${yaw > 0 ? '오른쪽' : '왼쪽'} ${d}°`; };
-// 다트는 놓인 자리 바로 앞(같은 높이·좌우)을 노린다. 세기 = 빠르기:
-// 세면 거의 그대로 꽂히고, 약하면 조금 처지고 바람·장애물 영향을 오래 받는다
+// 다트는 놓인 자리 바로 앞(같은 높이·좌우)을 노린다.
+// shortcut: 실험판(비행)이라 세기는 무시하고 앞으로 가는 속도는 일정(약 5초 비행), 재밌으면 출발 조작을 다시 정한다
 function shotOf(power, yaw, P) {
-  const D = P.z - FACE_Z, vz = 22 + power * 20, t = D / vz;
-  const h = P.y - (1 - power) * 1.8;
+  const D = P.z - FACE_Z, vz = 18, t = D / vz;
+  const h = P.y;
   return new V3(Math.sin(yaw) * vz, (h - P.y + G * t * t / 2) / t + tiltTan() * vz, -Math.cos(yaw) * vz);
 }
 function launch(power, yaw) {
@@ -517,7 +522,7 @@ function launch(power, yaw) {
   };
   held = null; state = 'fly'; ui.repos.hidden = true; ui.tilt.hidden = true; aimArrow.visible = false;
   refreshButtons(); sfx.throw(); buzz(15);
-  setHint('누른 채 끌면 그쪽으로 틀어요. 많이 틀수록 느려지고 흔들려요');
+  setHint('누른 채 끌면 그쪽으로 날아가요. 장애물을 피해 얼굴까지!');
 }
 
 function wrapAngle(a) { a = (a + Math.PI) % (Math.PI * 2); if (a < 0) a += Math.PI * 2; return a - Math.PI; }
@@ -586,9 +591,9 @@ function stepDart(dt) {
   const s = Math.min(1, sl);
   d.jx += ((Math.random() * 2 - 1) * p.flutter * 2.5 - d.jx) * Math.min(1, dt * 3);
   d.jy += ((Math.random() * 2 - 1) * p.flutter * 1.5 - d.jy) * Math.min(1, dt * 3);
-  d.vel.x += (wind.x * p.wind + sx * 8 * p.steer + d.jx) * dt;
-  d.vel.y += (-G + wind.y * p.wind + sy * 8 * p.steer + d.jy) * dt;
-  d.vel.z *= 1 - s * .22 * dt;
+  // 활공: 조종은 세게, 손을 떼면 옆·위아래 속도가 서서히 줄어 멈춘다(관성 약간). 틀어도 앞으로 가는 속도는 그대로
+  d.vel.x += (wind.x * p.wind + sx * 14 * p.steer + d.jx - d.vel.x * 1.2) * dt;
+  d.vel.y += (-G + wind.y * p.wind + sy * 14 * p.steer + d.jy - d.vel.y * 1.2) * dt;
   d.wobble = Math.min(2, d.wobble + s * dt * 1.4) * (1 - dt * .7);
   d.rot += d.spin * dt;
   d.roll = d.rot + Math.sin(d.t * (6 + p.flutter * 4)) * (.08 + d.wobble * .3) * p.flutter;
@@ -600,12 +605,15 @@ function stepDart(dt) {
   d.mesh.userData.card.rotation.z = d.roll;
 
   const crossed = z => prevZ > z && d.pos.z <= z;
-  if (active.hand && crossed(hand.z) &&
-      Math.abs(d.pos.x - hand.x) < 1.5 + p.r * .4 && Math.abs(d.pos.y - hand.y) < 1.9 + p.r * .4) { blockDart(d, '손바닥에 막힘'); return; }
-  if (active.fan && Math.abs(d.pos.z - fan.z) < fan.zone && Math.abs(d.pos.x - fan.g.position.x) < 3) {
-    d.vel.y += fan.dir * 13 * dt; d.wobble = Math.min(2, d.wobble + dt * .8);
+  for (const h of hands) {
+    if (h.on && crossed(h.z) &&
+        Math.abs(d.pos.x - h.x) < 1.5 + p.r * .4 && Math.abs(d.pos.y - h.y) < 1.9 + p.r * .4) { blockDart(d, '손바닥에 막힘'); return; }
   }
-  if (active.fly) flies.forEach(f => {
+  fans.forEach(f => {
+    if (!f.on || Math.abs(d.pos.z - f.z) > f.zone || Math.abs(d.pos.x - f.g.position.x) > 3) return;
+    d.vel.y += f.dir * 13 * dt; d.wobble = Math.min(2, d.wobble + dt * .8);
+  });
+  flies.forEach(f => {
     if (!f.on || f.knock > 0) return;
     if (f.g.position.distanceTo(d.pos) < p.r * .8 + .3) {
       const side = d.pos.x >= f.g.position.x ? 1 : -1;
@@ -719,10 +727,12 @@ function frame(now) {
   T += dt;
 
   // 손바닥: 뽑힌 방향(좌우 또는 위아래)으로만 오간다
-  const sw = Math.sin(T * .9);
-  hand.x = hand.axis === 'x' ? hand.cx + sw * 3.5 : hand.cx; hand.y = hand.axis === 'y' ? hand.cy + sw * 2.5 : hand.cy;
-  hand.mesh.position.set(hand.x, hand.y, hand.z); hand.mesh.rotation.z = Math.sin(T * 1.8) * .12;
-  fan.blades.rotation.z += dt * 24; flowTex.offset.y -= fan.dir * dt * 1.4;
+  hands.forEach(h => {
+    const sw = Math.sin(T * .9 + h.ph);
+    h.x = h.axis === 'x' ? h.cx + sw * 3.5 : h.cx; h.y = h.axis === 'y' ? h.cy + sw * 2.5 : h.cy;
+    h.mesh.position.set(h.x, h.y, h.z); h.mesh.rotation.z = Math.sin(T * 1.8 + h.ph) * .12;
+  });
+  fans.forEach(f => { f.blades.rotation.z += dt * 24; f.flowTex.offset.y -= f.dir * dt * 1.4; });
   flies.forEach(f => {
     if (f.knock > 0) {
       // 맞은 파리는 잠깐 튕겨 나갔다가 제 경로로 돌아온다
@@ -738,7 +748,7 @@ function frame(now) {
   for (let i = 0; i < DUST; i++) {
     dustPos[i * 3] += (wind.x * 1.6 + .2) * dt; dustPos[i * 3 + 1] += wind.y * dt; dustPos[i * 3 + 2] += 2 * dt;
     if (dustPos[i * 3] > 12) dustPos[i * 3] -= 24; if (dustPos[i * 3] < -12) dustPos[i * 3] += 24;
-    if (dustPos[i * 3 + 2] > 7) dustPos[i * 3 + 2] -= 37;
+    if (dustPos[i * 3 + 2] > 7) dustPos[i * 3 + 2] -= 97;
   }
   dustGeo.attributes.position.needsUpdate = true;
 
